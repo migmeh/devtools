@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    container_name: devtools_app
+    ports:
+      - "80:80"
+      - "5173:5173"
+    volumes:
+      - .:/var/www/html
+    # Run startup script
+    command: /bin/bash /var/www/html/start.sh
+    tty: true
