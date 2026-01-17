@@ -1,16 +1,55 @@
-# React + Vite
+# DevTools Web App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A powerful suite of developer utilities built with React, Vite, and Tailwind CSS. Features professional tools like Color Converters, Gradient Generators, and a Catppuccin-themed Code Scratchpad.
 
-Currently, two official plugins are available:
+## 🚀 Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Color Converter**: HEX, RGB, HSL, and CMYK conversion.
+- **Image Color Picker**: Extract colors directly from images.
+- **Gradient Generator**: Create complex CSS gradients with RGBA support.
+- **Palette Generator**: harmonic color recommendations.
+- **Shadow Generator**: Visual box-shadow creation.
+- **Quick Notes**: Multi-tab code scratchpad with Catppuccin theme, line numbers, and syntax highlighting.
 
-## React Compiler
+## 🛠️ Technology Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend**: React 19, Vite
+- **Styling**: Tailwind CSS
+- **Icons**: FontAwesome
+- **Editor**: PrismJS + react-simple-code-editor
+- **Environment**: Docker (PHP 8.4 + Apache + Node.js)
 
-## Expanding the ESLint configuration
+## 📦 Commands
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Development
+To start the development server:
+```bash
+npm run dev
+```
+
+### Build for Production (Recommended using Docker)
+To create a production-ready build inside the container:
+```bash
+docker-compose exec app npm run build
+```
+
+### Build Locally (Alternative)
+If you have Node.js installed on your host:
+```bash
+npm run build
+```
+
+### Preview Production Build
+To preview the build locally:
+```bash
+npm run preview
+```
+
+## 🐳 Docker Usage
+
+Start the environment with:
+```bash
+docker-compose up -d
+```
+
+Access the app at `http://localhost:5173`.
