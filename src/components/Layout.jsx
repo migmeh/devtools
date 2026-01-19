@@ -1,12 +1,13 @@
 import React from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPalette, faEyeDropper, faSwatchbook, faLayerGroup, faImage, faHome, faStickyNote, faCode } from '@fortawesome/free-solid-svg-icons';
+import { faPalette, faEyeDropper, faSwatchbook, faLayerGroup, faImage, faHome, faStickyNote, faCode, faList } from '@fortawesome/free-solid-svg-icons';
+import logo from '../assets/200.png';
 
 const Sidebar = () => {
     const navItems = [
-        { to: "/", icon: faHome, label: "Dashboard" },
         { to: "/colors", icon: faPalette, label: "Color Converter" },
+        { to: "/color-names", icon: faList, label: "Color Names" },
         { to: "/image-picker", icon: faEyeDropper, label: "Image Picker" },
         { to: "/gradients", icon: faSwatchbook, label: "Gradients" },
         { to: "/palettes", icon: faLayerGroup, label: "Palettes" },
@@ -18,9 +19,12 @@ const Sidebar = () => {
     return (
         <aside className="w-64 bg-surface border-r border-slate-700/50 hidden md:flex flex-col h-screen fixed left-0 top-0">
             <div className="p-6 border-b border-slate-700/50">
-                <h2 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-violet-500 bg-clip-text text-transparent">
-                    DevTools
-                </h2>
+                <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                    <img src={logo} alt="Logo" className="w-8 h-8 object-contain" />
+                    <h2 className="text-2xl font-gamer">
+                        <span className="text-white">DEV</span><span className="text-gradient-editable">TOOLS</span>
+                    </h2>
+                </Link>
             </div>
             <nav className="flex-1 overflow-y-auto p-4 space-y-2">
                 {navItems.map((item) => (

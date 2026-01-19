@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPalette, faEyeDropper, faSwatchbook, faLayerGroup, faImage, faStickyNote } from '@fortawesome/free-solid-svg-icons';
+import { faPalette, faEyeDropper, faSwatchbook, faLayerGroup, faImage, faStickyNote, faCode, faList } from '@fortawesome/free-solid-svg-icons';
+import logo from '../assets/200.png';
 
 const ToolCard = ({ to, icon, title, description, colorClass, bgClass }) => (
     <Link to={to} className="card hover:border-primary/50 group block h-full transition-all hover:-translate-y-1">
@@ -21,7 +22,16 @@ const Home = () => {
             title: "Color Converter",
             description: "Convert between RGB, HEX, HSL, and CMYK formats with real-time preview.",
             colorClass: "text-blue-500",
+
             bgClass: "bg-blue-500"
+        },
+        {
+            to: "/color-names",
+            icon: faList,
+            title: "Color Names",
+            description: "Searchable list of standard CSS colors with HEX and RGBA values.",
+            colorClass: "text-indigo-500",
+            bgClass: "bg-indigo-500"
         },
         {
             to: "/image-picker",
@@ -62,14 +72,23 @@ const Home = () => {
             description: "Simple scratchpad with .txt export. Supports multi-language characters.",
             colorClass: "text-yellow-500",
             bgClass: "bg-yellow-500"
+        },
+        {
+            to: "/svg-tools",
+            icon: faCode,
+            title: "Helper SVG",
+            description: "View, edit live code, and render SVG files instantly.",
+            colorClass: "text-pink-500",
+            bgClass: "bg-pink-500"
         }
     ];
 
     return (
         <div className="animate-fade-in">
             <div className="text-center mb-12">
-                <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-400 to-violet-500 bg-clip-text text-transparent mb-4">
-                    Developer Toolkit
+                <h1 className="text-4xl md:text-6xl font-gamer mb-4 flex items-center justify-center gap-4">
+                    <img src={logo} alt="Logo" className="w-12 h-12 md:w-16 md:h-16 object-contain" />
+                    <span className="text-white">DEVELOPER</span> <span className="text-gradient-editable">TOOLKIT</span>
                 </h1>
                 <p className="text-slate-400 text-lg max-w-2xl mx-auto">
                     Essential web development tools designed for speed and aesthetics.

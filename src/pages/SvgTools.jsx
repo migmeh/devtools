@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Editor from 'react-simple-code-editor';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-markup'; // HTML/SVG
@@ -6,10 +6,20 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCloudUploadAlt, faCode, faImage, faCopy, faCheck } from '@fortawesome/free-solid-svg-icons';
 
 const SvgTools = () => {
-    const [svgCode, setSvgCode] = useState('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n  <circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="red" />\n</svg>');
-    const [fileName, setFileName] = useState('untitled.svg');
+    const [svgCode, setSvgCode] = useState(() => {
+        return localStorage.getItem('svg_tools_code') || '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n  <circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="red" />\n</svg>';
+    });
+    const [fileName, setFileName] = useState(() => {
+        return localStorage.getItem('svg_tools_filename') || 'untitled.svg';
+    });
     const [copied, setCopied] = useState(false);
     const fileInputRef = useRef(null);
+
+    // Persistence
+    useEffect(() => {
+        localStorage.setItem('svg_tools_code', svgCode);
+        localStorage.setItem('svg_tools_filename', fileName);
+    }, [svgCode, fileName]);
 
     const handleFileUpload = (e) => {
         const file = e.target.files[0];

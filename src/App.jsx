@@ -10,6 +10,7 @@ import Palettes from './pages/Palettes';
 import Shadows from './pages/Shadows';
 import QuickNotes from './pages/QuickNotes';
 import SvgTools from './pages/SvgTools';
+import ColorReference from './pages/ColorReference';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="colors" element={<ColorConverter />} />
+          <Route path="color-names" element={<ColorReference />} />
           <Route path="image-picker" element={<ImagePicker />} />
           <Route path="gradients" element={<GradientGenerator />} />
           <Route path="palettes" element={<Palettes />} />
