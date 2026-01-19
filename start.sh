@@ -14,6 +14,9 @@ fi
 # Fix for Apache ServerName warning (optional but cleaner)
 echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
+# Enable Apache Rewrite Module
+a2enmod rewrite
+
 # Start Apache in background
 docker-php-entrypoint apache2-foreground &
 

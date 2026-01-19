@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPalette, faEyeDropper, faSwatchbook, faLayerGroup, faImage, faHome, faStickyNote } from '@fortawesome/free-solid-svg-icons';
+import { faPalette, faEyeDropper, faSwatchbook, faLayerGroup, faImage, faHome, faStickyNote, faCode } from '@fortawesome/free-solid-svg-icons';
 
 const Sidebar = () => {
     const navItems = [
@@ -11,6 +11,7 @@ const Sidebar = () => {
         { to: "/gradients", icon: faSwatchbook, label: "Gradients" },
         { to: "/palettes", icon: faLayerGroup, label: "Palettes" },
         { to: "/shadows", icon: faImage, label: "Shadows" },
+        { to: "/svg-tools", icon: faCode, label: "Helper SVG" },
         { to: "/notes", icon: faStickyNote, label: "Quick Notes" },
     ];
 
@@ -27,10 +28,7 @@ const Sidebar = () => {
                         key={item.to}
                         to={item.to}
                         className={({ isActive }) =>
-                            `flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive
-                                ? "bg-primary/10 text-primary border border-primary/20"
-                                : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                            }`
+                            isActive ? "nav-item nav-item-active" : "nav-item"
                         }
                     >
                         <FontAwesomeIcon icon={item.icon} className="w-5" />

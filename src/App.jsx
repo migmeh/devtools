@@ -9,6 +9,7 @@ import GradientGenerator from './pages/Gradients';
 import Palettes from './pages/Palettes';
 import Shadows from './pages/Shadows';
 import QuickNotes from './pages/QuickNotes';
+import SvgTools from './pages/SvgTools';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="palettes" element={<Palettes />} />
           <Route path="shadows" element={<Shadows />} />
           <Route path="notes" element={<QuickNotes />} />
+          <Route path="svg-tools" element={<SvgTools />} />
           {/* Add more routes here */}
         </Route>
       </Routes>

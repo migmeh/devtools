@@ -43,6 +43,7 @@ const ColorInput = ({ label, value, onChange, onCopy }) => {
 const ColorConverter = () => {
     const [color, setColor] = useState("#3b82f6");
     const [hex, setHex] = useState(color);
+    const [hex0x, setHex0x] = useState(color.replace("#", "0x"));
     const [rgb, setRgb] = useState("");
     const [hsl, setHsl] = useState("");
     const [cmyk, setCmyk] = useState("");
@@ -51,7 +52,9 @@ const ColorConverter = () => {
     const updateColorValues = (newColor) => {
         const c = colord(newColor);
         if (c.isValid()) {
-            setHex(c.toHex());
+            const newHex = c.toHex();
+            setHex(newHex);
+            setHex0x(newHex.replace("#", "0x"));
             setRgb(c.toRgbString());
             setHsl(c.toHslString());
             setCmyk(c.toCmykString());
@@ -95,10 +98,10 @@ const ColorConverter = () => {
 
                     <div className="w-full mt-4">
                         <div
-                            className="h-24 rounded-xl shadow-inner flex items-center justify-center border border-slate-700"
+                            className="h-24 rounded-xl shadow-inner flex items-center justify-center border border-slate-200"
                             style={{ backgroundColor: color }}
                         >
-                            <span className="bg-black/30 backdrop-blur-md px-4 py-1 rounded-full text-white font-mono shadow-sm border border-white/10">
+                            <span className="bg-white/80 backdrop-blur-md px-4 py-1 rounded-full text-slate-900 font-mono shadow-sm border border-white/20">
                                 {name}
                             </span>
                         </div>
@@ -113,6 +116,11 @@ const ColorConverter = () => {
                         label="HEX"
                         value={hex}
                         onChange={handleHexChange}
+                    />
+                    <ColorInput
+                        label="HEX (0x)"
+                        value={hex0x}
+                        onChange={() => { }} // Read-only
                     />
                     <ColorInput
                         label="RGB"
@@ -130,12 +138,12 @@ const ColorConverter = () => {
                         onChange={() => { }}
                     />
 
-                    <div className="mt-6 p-4 bg-slate-900 rounded-lg border border-slate-700/50">
+                    <div className="mt-6 p-4 bg-black/30 rounded-lg border border-white/10">
                         <h4 className="text-sm font-medium text-slate-400 mb-2">CSS Snippet</h4>
-                        <code className="text-green-400 font-mono text-sm block">
+                        <code className="text-emerald-400 font-mono text-sm block">
                             color: {hex};
                         </code>
-                        <code className="text-green-400 font-mono text-sm block">
+                        <code className="text-emerald-400 font-mono text-sm block">
                             background-color: {rgb};
                         </code>
                     </div>

@@ -6,8 +6,8 @@ import { HexColorPicker } from 'react-colorful';
 const Slider = ({ label, value, min, max, onChange, unit = 'px' }) => (
     <div className="mb-4">
         <div className="flex justify-between mb-1">
-            <label className="text-xs font-medium text-slate-400">{label}</label>
-            <span className="text-xs font-mono text-slate-300">{value}{unit}</span>
+            <label className="text-xs font-medium text-slate-500">{label}</label>
+            <span className="text-xs font-mono text-slate-500">{value}{unit}</span>
         </div>
         <input
             type="range"
@@ -15,7 +15,7 @@ const Slider = ({ label, value, min, max, onChange, unit = 'px' }) => (
             max={max}
             value={value}
             onChange={(e) => onChange(Number(e.target.value))}
-            className="w-full accent-primary h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+            className="w-full accent-primary h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
         />
     </div>
 );
@@ -40,10 +40,17 @@ const Shadows = () => {
     }
 
     const rgb = hexToRgb(color) || { r: 0, g: 0, b: 0 };
-    const shadowValue = `${inset ? 'inset ' : ''}${offsetX}px ${offsetY}px ${blur}px ${spread}px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
 
-    const copyCSS = () => {
-        navigator.clipboard.writeText(`box-shadow: ${shadowValue};`);
+    // RGBA Version (Standard for box-shadow transparency)
+    const shadowValueRgba = `${inset ? 'inset ' : ''}${offsetX}px ${offsetY}px ${blur}px ${spread}px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
+
+    // Hex Version (if supported by browser, usually 8-digit hex for alpha)
+    // We construct 8-digit hex: #RRGGBBAA
+    const alphaHex = Math.round(opacity * 255).toString(16).padStart(2, '0');
+    const shadowValueHex = `${inset ? 'inset ' : ''}${offsetX}px ${offsetY}px ${blur}px ${spread}px ${color}${alphaHex}`;
+
+    const copyCSS = (text) => {
+        navigator.clipboard.writeText(`box-shadow: ${text};`);
     };
 
     const reset = () => {
@@ -65,7 +72,7 @@ const Shadows = () => {
                     <div className="card">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="card-title">Configuration</h3>
-                            <button onClick={reset} className="text-xs text-slate-500 hover:text-white">
+                            <button onClick={reset} className="text-xs text-slate-500 hover:text-slate-800">
                                 <FontAwesomeIcon icon={faUndo} /> Reset
                             </button>
                         </div>
@@ -83,9 +90,9 @@ const Shadows = () => {
                                     type="checkbox"
                                     checked={inset}
                                     onChange={(e) => setInset(e.target.checked)}
-                                    className="rounded border-slate-700 bg-slate-900 text-primary focus:ring-primary"
+                                    className="rounded border-slate-300 bg-slate-50 text-primary focus:ring-primary"
                                 />
-                                <span className="text-sm text-slate-300">Inset Shadow</span>
+                                <span className="text-sm text-slate-600">Inset Shadow</span>
                             </label>
                         </div>
                     </div>
@@ -101,22 +108,32 @@ const Shadows = () => {
 
                 {/* Preview */}
                 <div className="lg:col-span-8 space-y-6">
-                    <div className="h-96 bg-white rounded-xl flex items-center justify-center p-12 overflow-hidden border border-slate-700/50 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CjxyZWN0IHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iI2YxZjVZjkiPjwvcmVjdD4KPHJlY3QgeD0iMTAiIHk9IjEwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiNmMWY1ZjkiPjwvcmVjdD4KPC9zdmc+')]">
+                    <div className="h-96 bg-surface-dim rounded-xl flex items-center justify-center p-12 overflow-hidden border border-white/10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CjxyZWN0IHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSI+PC9yZWN0Pgo8cmVjdCB4PSIxMCIgeT0iMTAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSI+PC9yZWN0Pgo8L3N2Zz4=')]">
                         <div
                             className="w-48 h-48 bg-blue-500 rounded-2xl transition-all duration-200"
-                            style={{ boxShadow: shadowValue }}
+                            style={{ boxShadow: shadowValueRgba }}
                         />
                     </div>
 
-                    <div className="card bg-slate-900 border-slate-700">
+                    <div className="card bg-surface-dim border-white/10">
                         <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-sm font-medium text-slate-400">CSS Output</h3>
-                            <button onClick={copyCSS} className="btn btn-secondary text-xs">
+                            <h3 className="text-sm font-medium text-slate-500">CSS Output (HEX)</h3>
+                            <button onClick={() => copyCSS(shadowValueHex)} className="btn btn-secondary text-xs">
                                 <FontAwesomeIcon icon={faCopy} className="mr-2" /> Copy
                             </button>
                         </div>
-                        <code className="block p-4 bg-black/30 rounded-lg text-green-400 font-mono text-sm break-all">
-                            box-shadow: {shadowValue};
+                        <code className="block p-4 bg-black/30 border border-white/10 rounded-lg text-emerald-400 font-mono text-sm break-all mb-4">
+                            box-shadow: {shadowValueHex};
+                        </code>
+
+                        <div className="flex justify-between items-center mb-2 pt-4 border-t border-slate-200">
+                            <h3 className="text-sm font-medium text-slate-500">CSS Output (RGBA)</h3>
+                            <button onClick={() => copyCSS(shadowValueRgba)} className="btn btn-secondary text-xs">
+                                <FontAwesomeIcon icon={faCopy} className="mr-2" /> Copy
+                            </button>
+                        </div>
+                        <code className="block p-4 bg-black/30 border border-white/10 rounded-lg text-blue-400 font-mono text-sm break-all">
+                            box-shadow: {shadowValueRgba};
                         </code>
                     </div>
                 </div>

@@ -3,6 +3,8 @@ import { RgbaStringColorPicker } from 'react-colorful';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash, faCopy, faSwatchbook, faUndo } from '@fortawesome/free-solid-svg-icons';
 
+import { colord } from 'colord';
+
 const GradientGenerator = () => {
     const [type, setType] = useState('linear');
     const [angle, setAngle] = useState(90);
@@ -11,20 +13,23 @@ const GradientGenerator = () => {
         { id: 2, offset: 100, color: 'rgba(139, 92, 246, 0.5)' }
     ]);
     const [activeStopId, setActiveStopId] = useState(1);
-    const [gradientCSS, setGradientCSS] = useState('');
+    const [gradientCSS_Hex, setGradientCSS_Hex] = useState('');
+    const [gradientCSS_Rgba, setGradientCSS_Rgba] = useState('');
 
     // Generate CSS whenever state changes
     useEffect(() => {
         const sortedStops = [...stops].sort((a, b) => a.offset - b.offset);
-        const stopString = sortedStops.map(s => `${s.color} ${s.offset}%`).join(', ');
 
-        let css = '';
+        const stopStringHex = sortedStops.map(s => `${colord(s.color).toHex()} ${s.offset}%`).join(', ');
+        const stopStringRgba = sortedStops.map(s => `${s.color} ${s.offset}%`).join(', ');
+
         if (type === 'linear') {
-            css = `linear-gradient(${angle}deg, ${stopString})`;
+            setGradientCSS_Hex(`linear-gradient(${angle}deg, ${stopStringHex})`);
+            setGradientCSS_Rgba(`linear-gradient(${angle}deg, ${stopStringRgba})`);
         } else {
-            css = `radial-gradient(circle, ${stopString})`;
+            setGradientCSS_Hex(`radial-gradient(circle, ${stopStringHex})`);
+            setGradientCSS_Rgba(`radial-gradient(circle, ${stopStringRgba})`);
         }
-        setGradientCSS(css);
     }, [type, angle, stops]);
 
     const addStop = () => {
@@ -46,9 +51,8 @@ const GradientGenerator = () => {
 
     const activeStop = stops.find(s => s.id === activeStopId);
 
-    const copyCSS = () => {
-        navigator.clipboard.writeText(`background: ${gradientCSS};`);
-        // Toast or indication could go here
+    const copyCSS = (text) => {
+        navigator.clipboard.writeText(`background: ${text};`);
     };
 
     return (
@@ -155,12 +159,21 @@ const GradientGenerator = () => {
                                     color={activeStop.color}
                                     onChange={(c) => updateStop(activeStop.id, { color: c })}
                                 />
-                                <input
-                                    type="text"
-                                    value={activeStop.color}
-                                    onChange={(e) => updateStop(activeStop.id, { color: e.target.value })}
-                                    className="input mt-4 text-center font-mono text-sm"
-                                />
+                                <div className="flex gap-2 w-full mt-4">
+                                    <input
+                                        type="text"
+                                        value={activeStop.color}
+                                        onChange={(e) => updateStop(activeStop.id, { color: e.target.value })}
+                                        className="input text-center font-mono text-sm w-1/2"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={colord(activeStop.color).toHex().replace("#", "0x")}
+                                        readOnly
+                                        className="input text-center font-mono text-sm w-1/2 bg-slate-800 text-slate-400"
+                                        title="HEX (0x)"
+                                    />
+                                </div>
                             </div>
                         )}
                     </div>
@@ -171,18 +184,28 @@ const GradientGenerator = () => {
                     <div
                         className="w-full h-96 rounded-xl shadow-2xl border border-slate-700 transition-all duration-300 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CjxyZWN0IHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iIzFmMjkzYiIvPgo8cmVjdCB4PSIxMCIgeT0iMTAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iIzFmMjkzYiIvPgo8L3N2Zz4=')]"
                     >
-                        <div className="w-full h-full rounded-xl" style={{ background: gradientCSS }} />
+                        <div className="w-full h-full rounded-xl" style={{ background: gradientCSS_Rgba }} />
                     </div>
 
                     <div className="card bg-slate-900 border-slate-700">
                         <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-sm font-medium text-slate-400">CSS Output</h3>
-                            <button onClick={copyCSS} className="btn btn-secondary text-xs">
+                            <h3 className="text-sm font-medium text-slate-400">CSS Output (HEX)</h3>
+                            <button onClick={() => copyCSS(gradientCSS_Hex)} className="btn btn-secondary text-xs">
                                 <FontAwesomeIcon icon={faCopy} className="mr-2" /> Copy
                             </button>
                         </div>
-                        <code className="block p-4 bg-black/30 rounded-lg text-green-400 font-mono text-sm break-all">
-                            background: {gradientCSS};
+                        <code className="block p-4 bg-black/30 rounded-lg text-green-400 font-mono text-sm break-all mb-4">
+                            background: {gradientCSS_Hex};
+                        </code>
+
+                        <div className="flex justify-between items-center mb-2 pt-4 border-t border-slate-700">
+                            <h3 className="text-sm font-medium text-slate-400">CSS Output (RGBA)</h3>
+                            <button onClick={() => copyCSS(gradientCSS_Rgba)} className="btn btn-secondary text-xs">
+                                <FontAwesomeIcon icon={faCopy} className="mr-2" /> Copy
+                            </button>
+                        </div>
+                        <code className="block p-4 bg-black/30 rounded-lg text-blue-400 font-mono text-sm break-all">
+                            background: {gradientCSS_Rgba};
                         </code>
                     </div>
                 </div>
