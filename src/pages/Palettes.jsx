@@ -61,7 +61,21 @@ const PaletteDisplay = ({ title, colors }) => (
 );
 
 const Palettes = () => {
-    const [color, setColor] = useState("rgba(59, 130, 246, 1)");
+    // Load saved color from localStorage or use default
+    const loadSavedColor = () => {
+        try {
+            const saved = localStorage.getItem('paletteGenerator');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                return parsed.color || "rgba(59, 130, 246, 1)";
+            }
+        } catch (error) {
+            console.warn('Error loading palette state:', error);
+        }
+        return "rgba(59, 130, 246, 1)";
+    };
+
+    const [color, setColor] = useState(loadSavedColor());
     const [harmonies, setHarmonies] = useState({
         complementary: [],
         analogous: [],
@@ -69,6 +83,15 @@ const Palettes = () => {
         tetradic: [],
         monochromatic: []
     });
+
+    // Save color to localStorage whenever it changes
+    useEffect(() => {
+        try {
+            localStorage.setItem('paletteGenerator', JSON.stringify({ color }));
+        } catch (error) {
+            console.warn('Error saving palette state:', error);
+        }
+    }, [color]);
 
     useEffect(() => {
         const c = colord(color);
@@ -105,7 +128,12 @@ const Palettes = () => {
                 {/* Left: Picker */}
                 <div className="lg:col-span-4">
                     <div className="card sticky top-24">
-                        <h3 className="card-title mb-4">Base Color</h3>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="card-title">Base Color</h3>
+                            <span className="text-xs text-green-400 opacity-75">
+                                ✓ Auto-saved
+                            </span>
+                        </div>
                         <div className="flex flex-col items-center">
                             <style>{`.react-colorful { width: 100%; height: 250px; border-radius: 12px; }`}</style>
                             <RgbaStringColorPicker color={color} onChange={setColor} />

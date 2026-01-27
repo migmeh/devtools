@@ -5,11 +5,61 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCloudUploadAlt, faEyeDropper, faTimes } from '@fortawesome/free-solid-svg-icons';
 
 const ImagePicker = () => {
+    // Load saved state from localStorage
+    const loadSavedState = () => {
+        try {
+            const saved = localStorage.getItem('imageColorPicker');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                return {
+                    imageData: parsed.imageData || null,
+                    selectedColors: parsed.selectedColors || [],
+                    lastColor: parsed.lastColor || null
+                };
+            }
+        } catch (error) {
+            console.warn('Error loading image picker state:', error);
+        }
+        return {
+            imageData: null,
+            selectedColors: [],
+            lastColor: null
+        };
+    };
+
+    const savedState = loadSavedState();
     const [image, setImage] = useState(null);
-    const [color, setColor] = useState(null);
+    const [imageData, setImageData] = useState(savedState.imageData);
+    const [color, setColor] = useState(savedState.lastColor);
+    const [selectedColors, setSelectedColors] = useState(savedState.selectedColors);
     const [magnifierPosition, setMagnifierPosition] = useState(null);
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
+
+    // Load saved image on component mount
+    useEffect(() => {
+        if (savedState.imageData) {
+            const img = new Image();
+            img.onload = () => {
+                setImage(img);
+            };
+            img.src = savedState.imageData;
+        }
+    }, []);
+
+    // Save state to localStorage whenever it changes
+    useEffect(() => {
+        const stateToSave = {
+            imageData,
+            selectedColors,
+            lastColor: color
+        };
+        try {
+            localStorage.setItem('imageColorPicker', JSON.stringify(stateToSave));
+        } catch (error) {
+            console.warn('Error saving image picker state:', error);
+        }
+    }, [imageData, selectedColors, color]);
 
     const onDrop = (acceptedFiles) => {
         const file = acceptedFiles[0];
@@ -19,6 +69,7 @@ const ImagePicker = () => {
                 const img = new Image();
                 img.onload = () => {
                     setImage(img);
+                    setImageData(e.target.result); // Save base64 data
                     setColor(null);
                 };
                 img.src = e.target.result;
@@ -62,6 +113,12 @@ const ImagePicker = () => {
         const hex = colord({ r: pixel[0], g: pixel[1], b: pixel[2] }).toHex();
 
         setColor(hex);
+        
+        // Add to selected colors history (avoid duplicates)
+        setSelectedColors(prev => {
+            const newColors = prev.filter(c => c !== hex);
+            return [hex, ...newColors].slice(0, 10); // Keep last 10 colors
+        });
     };
 
     const handleMouseMove = (e) => {
@@ -71,7 +128,15 @@ const ImagePicker = () => {
 
     const resetImage = () => {
         setImage(null);
+        setImageData(null);
         setColor(null);
+        setSelectedColors([]);
+        // Clear from localStorage
+        try {
+            localStorage.removeItem('imageColorPicker');
+        } catch (error) {
+            console.warn('Error clearing image picker state:', error);
+        }
     };
 
     return (
@@ -81,6 +146,11 @@ const ImagePicker = () => {
                     <FontAwesomeIcon icon={faEyeDropper} />
                 </span>
                 Image Color Picker
+                {image && (
+                    <span className="text-xs text-green-400 opacity-75 ml-auto">
+                        ✓ Auto-saved
+                    </span>
+                )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -120,8 +190,10 @@ const ImagePicker = () => {
                         {color ? (
                             <div className="space-y-4">
                                 <div
-                                    className="h-24 rounded-lg shadow-inner border border-slate-700 w-full"
+                                    className="h-24 rounded-lg shadow-inner border border-slate-700 w-full cursor-pointer"
                                     style={{ backgroundColor: color }}
+                                    onClick={() => navigator.clipboard.writeText(color)}
+                                    title="Click to copy HEX"
                                 />
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-center bg-slate-900 p-3 rounded-lg border border-slate-700">
@@ -142,6 +214,29 @@ const ImagePicker = () => {
                             </div>
                         )}
                     </div>
+
+                    {selectedColors.length > 0 && (
+                        <div className="card">
+                            <h3 className="card-title mb-4">Color History</h3>
+                            <div className="grid grid-cols-5 gap-2">
+                                {selectedColors.map((historyColor, index) => (
+                                    <div
+                                        key={index}
+                                        className="aspect-square rounded-lg border border-slate-700 cursor-pointer hover:scale-105 transition-transform"
+                                        style={{ backgroundColor: historyColor }}
+                                        onClick={() => {
+                                            setColor(historyColor);
+                                            navigator.clipboard.writeText(historyColor);
+                                        }}
+                                        title={`${historyColor} - Click to select and copy`}
+                                    />
+                                ))}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-2">
+                                Click any color to select it and copy to clipboard
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

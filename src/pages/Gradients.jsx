@@ -6,15 +6,58 @@ import { faPlus, faTrash, faCopy, faSwatchbook, faUndo } from '@fortawesome/free
 import { colord } from 'colord';
 
 const GradientGenerator = () => {
-    const [type, setType] = useState('linear');
-    const [angle, setAngle] = useState(90);
-    const [stops, setStops] = useState([
-        { id: 1, offset: 0, color: 'rgba(59, 130, 246, 1)' },
-        { id: 2, offset: 100, color: 'rgba(139, 92, 246, 0.5)' }
-    ]);
-    const [activeStopId, setActiveStopId] = useState(1);
+    // Load saved state from localStorage or use defaults
+    const loadSavedState = () => {
+        try {
+            const saved = localStorage.getItem('gradientGenerator');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                return {
+                    type: parsed.type || 'linear',
+                    angle: parsed.angle || 90,
+                    stops: parsed.stops || [
+                        { id: 1, offset: 0, color: 'rgba(59, 130, 246, 1)' },
+                        { id: 2, offset: 100, color: 'rgba(139, 92, 246, 0.5)' }
+                    ],
+                    activeStopId: parsed.activeStopId || 1
+                };
+            }
+        } catch (error) {
+            console.warn('Error loading gradient state:', error);
+        }
+        return {
+            type: 'linear',
+            angle: 90,
+            stops: [
+                { id: 1, offset: 0, color: 'rgba(59, 130, 246, 1)' },
+                { id: 2, offset: 100, color: 'rgba(139, 92, 246, 0.5)' }
+            ],
+            activeStopId: 1
+        };
+    };
+
+    const savedState = loadSavedState();
+    const [type, setType] = useState(savedState.type);
+    const [angle, setAngle] = useState(savedState.angle);
+    const [stops, setStops] = useState(savedState.stops);
+    const [activeStopId, setActiveStopId] = useState(savedState.activeStopId);
     const [gradientCSS_Hex, setGradientCSS_Hex] = useState('');
     const [gradientCSS_Rgba, setGradientCSS_Rgba] = useState('');
+
+    // Save state to localStorage whenever it changes
+    useEffect(() => {
+        const stateToSave = {
+            type,
+            angle,
+            stops,
+            activeStopId
+        };
+        try {
+            localStorage.setItem('gradientGenerator', JSON.stringify(stateToSave));
+        } catch (error) {
+            console.warn('Error saving gradient state:', error);
+        }
+    }, [type, angle, stops, activeStopId]);
 
     // Generate CSS whenever state changes
     useEffect(() => {
@@ -55,6 +98,22 @@ const GradientGenerator = () => {
         navigator.clipboard.writeText(`background: ${text};`);
     };
 
+    const resetGradient = () => {
+        const defaultState = {
+            type: 'linear',
+            angle: 90,
+            stops: [
+                { id: 1, offset: 0, color: 'rgba(59, 130, 246, 1)' },
+                { id: 2, offset: 100, color: 'rgba(139, 92, 246, 0.5)' }
+            ],
+            activeStopId: 1
+        };
+        setType(defaultState.type);
+        setAngle(defaultState.angle);
+        setStops(defaultState.stops);
+        setActiveStopId(defaultState.activeStopId);
+    };
+
     return (
         <div className="page-container animate-fade-in">
             <div className="section-title">
@@ -62,13 +121,25 @@ const GradientGenerator = () => {
                     <FontAwesomeIcon icon={faSwatchbook} />
                 </span>
                 Gradient Generator
+                <button 
+                    onClick={resetGradient}
+                    className="btn btn-secondary text-sm ml-auto"
+                    title="Reset to default gradient"
+                >
+                    <FontAwesomeIcon icon={faUndo} className="mr-2" /> Reset
+                </button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
                 {/* Left: Controls */}
                 <div className="lg:col-span-4 space-y-6">
                     <div className="card">
-                        <h3 className="card-title mb-4">Settings</h3>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="card-title">Settings</h3>
+                            <span className="text-xs text-green-400 opacity-75">
+                                ✓ Auto-saved
+                            </span>
+                        </div>
 
                         <div className="mb-4">
                             <label className="label">Type</label>
