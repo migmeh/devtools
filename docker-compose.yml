@@ -2,11 +2,17 @@ services:
   app:
     build: .
     container_name: devtools_app
+    restart: unless-stopped
     ports:
-      - "80:80"
+      - "6000:80"
       - "5173:5173"
+    working_dir: /var/www/html
     volumes:
-      - .:/var/www/html
-    # Run startup script
+      - ./:/var/www/html:cached
+      # Evitamos que los node_modules locales sobrescriban los del contenedor
+      - /var/www/html/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Vital para que Vite detecte cambios en Docker
+      - VITE_HOST=0.0.0.0
     command: /bin/bash /var/www/html/start.sh
     tty: true
