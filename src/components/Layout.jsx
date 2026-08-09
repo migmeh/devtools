@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation, Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPalette, faEyeDropper, faSwatchbook, faLayerGroup, faImage, faHome, faStickyNote, faCode, faList } from '@fortawesome/free-solid-svg-icons';
+import { faPalette, faEyeDropper, faSwatchbook, faLayerGroup, faImage, faHome, faStickyNote, faCode, faList, faFolderOpen } from '@fortawesome/free-solid-svg-icons';
 import logo from '../assets/200.png';
 
 const Sidebar = () => {
@@ -14,6 +14,7 @@ const Sidebar = () => {
         { to: "/shadows", icon: faImage, label: "Shadows" },
         { to: "/svg-tools", icon: faCode, label: "Helper SVG" },
         { to: "/notes", icon: faStickyNote, label: "Quick Notes" },
+        { to: "/files", icon: faFolderOpen, label: "Files" },
     ];
 
     return (
@@ -62,13 +63,14 @@ const MobileNav = () => {
 const Layout = () => {
     const location = useLocation();
     const isNotesPage = location.pathname === '/notes';
+    const isFilesPage = location.pathname === '/files';
 
     return (
         <div className="min-h-screen bg-background text-white">
             <Sidebar />
             <div className="md:ml-64 min-h-screen flex flex-col">
                 <MobileNav />
-                <main className={`flex-1 ${isNotesPage ? 'overflow-hidden' : 'p-6 md:p-8'}`}>
+                <main className={`flex-1 ${isNotesPage || isFilesPage ? 'overflow-hidden' : 'p-6 md:p-8'}`}>
                     <Outlet />
                 </main>
             </div>

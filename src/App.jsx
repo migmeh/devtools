@@ -11,6 +11,7 @@ import Shadows from './pages/Shadows';
 import QuickNotes from './pages/QuickNotes';
 import SvgTools from './pages/SvgTools';
 import ColorReference from './pages/ColorReference';
+import FileExplorer from './pages/FileExplorer';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="shadows" element={<Shadows />} />
           <Route path="notes" element={<QuickNotes />} />
           <Route path="svg-tools" element={<SvgTools />} />
+          <Route path="files" element={<FileExplorer />} />
           {/* Add more routes here */}
         </Route>
       </Routes>
