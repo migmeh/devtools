@@ -155,3 +155,19 @@
   /* cyan-400 */
   background-image: linear-gradient(to right, var(--gradient-from), var(--gradient-to));
 }
+
+/* Animación de entrada para modales (visor / confirmación) */
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeInScale 0.18s ease-out both;
+}

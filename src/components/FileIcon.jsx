@@ -141,7 +141,24 @@ const getFileIcon = (type, name) => {
           <polyline points="8 6 2 12 8 18" />
         </svg>
       );
-
+    case 'system':
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-5 h-5 text-slate-600"
+      aria-label="Archivo de sistema"
+      role="img"
+    >
+      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <polyline points="13 2 13 9 20 9" />
+      <line x1="9" y1="13" x2="15" y2="13" />
+    </svg>
+  );
     default:
       return (
         <svg
