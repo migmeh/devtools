@@ -20,7 +20,10 @@ const getFileType = (name) => {
     return { type: 'text', name: ext.toUpperCase() };
   }
 
-  if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'py', 'rs', 'dart', 'java', 'c', 'cpp', 'h', 'hpp'].includes(ext) || ['javascript', 'typescript', 'css-in-js'].includes(ext)) {
+  if (
+    ['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'py', 'rs', 'dart', 'java', 'c', 'cpp', 'h', 'hpp'].includes(ext) ||
+    ['javascript', 'typescript', 'css-in-js'].includes(ext)
+  ) {
     return { type: 'code', name: ext.toUpperCase() };
   }
 
@@ -32,16 +35,17 @@ const getFileType = (name) => {
 };
 
 const FileExplorer = () => {
-  const [currentHandle, setCurrentHandle] = useState(null);
-  const [currentPath, setCurrentPath] = useState([]);
+  // Pila de navegación para mantener la referencia de Handles padre
+  const [dirStack, setDirStack] = useState([]);
   const [files, setFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  const loadDirectory = useCallback(async (dirHandle, pathName) => {
+  const currentDir = dirStack.length > 0 ? dirStack[dirStack.length - 1] : null;
+
+  const loadDirectory = useCallback(async (dirHandle) => {
     setIsLoading(true);
     setErrorMessage(null);
-    setCurrentPath(prev => [...prev, pathName]);
 
     try {
       const entries = [];
@@ -53,7 +57,11 @@ const FileExplorer = () => {
         };
 
         if (handle.kind === 'file') {
-          metadata.file = await handle.getFile();
+          try {
+            metadata.file = await handle.getFile();
+          } catch {
+            // Ignora errores si algún archivo individual bloquea la lectura
+          }
         }
 
         entries.push(metadata);
@@ -78,14 +86,9 @@ const FileExplorer = () => {
         mode: 'read',
       });
 
-      const dirEntry = Array.from(currentPath).pop();
-
-      if (dirEntry) {
-        await handle.entry();
-      }
-
-      setCurrentHandle(handle);
-      await loadDirectory(handle, '');
+      const initialStack = [{ name: handle.name || 'Raíz', handle }];
+      setDirStack(initialStack);
+      await loadDirectory(handle);
     } catch (error) {
       if (error.name !== 'AbortError') {
         setErrorMessage(`Error al seleccionar directorio: ${error.message}`);
@@ -95,29 +98,27 @@ const FileExplorer = () => {
 
   const navigateToDirectory = async (metadata) => {
     if (metadata.kind === 'directory') {
-      await loadDirectory(metadata.handle, metadata.name);
-    }
-  };
-
-  const navigateBack = async () => {
-    if (currentPath.length === 0) return;
-
-    const newPath = [...currentPath];
-    newPath.pop();
-    const parentDirName = newPath.length > 0 ? newPath[newPath.length - 1] : '';
-
-    if (newPath.length === 0) {
-      setCurrentHandle(null);
-      setFiles([]);
-    } else {
-      const parentHandle = await currentHandle.getDirectoryHandle(newPath[newPath.length - 2], { create: false });
-      await loadDirectory(parentHandle, parentDirName);
-      setCurrentPath(newPath);
+      const newStack = [...dirStack, { name: metadata.name, handle: metadata.handle }];
+      setDirStack(newStack);
+      await loadDirectory(metadata.handle);
     }
   };
 
   const navigateUp = async () => {
-    await navigateBack();
+    if (dirStack.length <= 1) {
+      setCurrentHandleToNull();
+      return;
+    }
+
+    const newStack = dirStack.slice(0, -1);
+    const parentDir = newStack[newStack.length - 1];
+    setDirStack(newStack);
+    await loadDirectory(parentDir.handle);
+  };
+
+  const setCurrentHandleToNull = () => {
+    setDirStack([]);
+    setFiles([]);
   };
 
   return (
@@ -129,9 +130,14 @@ const FileExplorer = () => {
           <p className="text-slate-400 text-sm">
             Accede a archivos de tu dispositivo. Los archivos permanecen en tu computadora.
           </p>
+          {dirStack.length > 0 && (
+            <p className="text-indigo-400 text-xs mt-1 font-mono">
+              Ruta: /{dirStack.map((d) => d.name).join('')}
+            </p>
+          )}
         </div>
 
-        {!currentHandle && (
+        {!currentDir && (
           <button
             onClick={selectDirectory}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
@@ -154,12 +160,11 @@ const FileExplorer = () => {
           </button>
         )}
 
-        {currentHandle && (
-          <>
+        {currentDir && (
+          <div className="flex items-center gap-2">
             <button
               onClick={navigateUp}
-              disabled={currentPath.length === 0}
-              className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+              className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -171,8 +176,8 @@ const FileExplorer = () => {
                 className="w-5 h-5"
                 aria-label="Retroceder"
               >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <polyline points="19 12 12 19 5 12" />
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
               </svg>
               Subir
             </button>
@@ -196,7 +201,7 @@ const FileExplorer = () => {
               </svg>
               Cambiar
             </button>
-          </>
+          </div>
         )}
       </div>
 
@@ -215,25 +220,19 @@ const FileExplorer = () => {
               className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mb-3"
               aria-label="Cargando"
             />
-            <style>{`
-              @keyframes spin {
-                to { transform: rotate(360deg); }
-              }
-              .animate-spin {
-                animation: spin 1s linear infinite;
-              }
-            `}</style>
             <p className="text-slate-400">Cargando archivos...</p>
           </div>
         </div>
       )}
 
       {/* File List */}
-      {!isLoading && currentHandle && files.length > 0 && (
+      {!isLoading && currentDir && files.length > 0 && (
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {files.map((file, index) => {
               const fileType = getFileType(file.name);
+              const IconComponent = getFileIcon(fileType.type);
+
               return (
                 <button
                   key={index}
@@ -241,7 +240,11 @@ const FileExplorer = () => {
                   className="bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700/50 rounded-xl p-4 text-left transition-colors group"
                 >
                   <div className="flex items-center gap-3">
-                    <getFileIcon(fileType.type) />
+                    {typeof IconComponent === 'function' ? (
+                      <IconComponent />
+                    ) : (
+                      IconComponent
+                    )}
 
                     <div className="flex-1 min-w-0">
                       <p className="text-white font-medium truncate group-hover:text-indigo-400 transition-colors">
@@ -259,7 +262,7 @@ const FileExplorer = () => {
         </div>
       )}
 
-      {!isLoading && currentHandle && files.length === 0 && (
+      {!isLoading && currentDir && files.length === 0 && (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <svg
@@ -276,9 +279,7 @@ const FileExplorer = () => {
               <line x1="12" y1="11" x2="12" y2="17" />
               <line x1="9" y1="14" x2="15" y2="14" />
             </svg>
-            <h3 className="text-xl font-medium text-slate-400 mb-2">
-              Directorio vacío
-            </h3>
+            <h3 className="text-xl font-medium text-slate-400 mb-2">Directorio vacío</h3>
             <p className="text-slate-500 max-w-xs mx-auto">
               Este directorio no contiene archivos o subcarpetas
             </p>
@@ -286,7 +287,7 @@ const FileExplorer = () => {
         </div>
       )}
 
-      {!isLoading && !currentHandle && (
+      {!isLoading && !currentDir && (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-lg">
             <svg
@@ -304,13 +305,18 @@ const FileExplorer = () => {
               <path d="M16 16l-3-3-3 3" />
             </svg>
             <h3 className="text-xl font-medium text-white mb-2">
-              No hay directorio seleccionado
+              Selecciona un directorio de tu computadora
             </h3>
             <p className="text-slate-500 max-w-md mx-auto mb-6">
-              Selecciona un directorio de tu computadora para empezar a explorar。
+              
+              Si usas Brave abrelo en la dirección:
+              <br /><br />
+              <strong>brave://flags/#file-system-access-api </strong><br /><br />
+              Cambia el estado a <strong>Enabled</strong>.
               <br />
+              Reinicia el navegador.
               <span className="text-slate-600 text-sm">
-                Los archivos no se suben a ningún servidor, quedan en tu dispositivo。
+                Los archivos no se suben a ningún servidor, quedan en tu dispositivo.
               </span>
             </p>
           </div>
