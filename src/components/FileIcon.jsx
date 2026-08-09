@@ -1,6 +1,6 @@
-import React from 'react';
+const getFileIcon = (type, name) => {
+  type = type || name?.split('.').pop()?.toLowerCase() || 'file';
 
-const getFileIcon = (type) => {
   switch (type) {
     case 'image':
     case 'jpeg':
@@ -112,11 +112,19 @@ const getFileIcon = (type) => {
 
     case 'code':
     case 'html':
-    case 'css':
-    case 'py':
-    case 'rust':
-    case 'dart':
+    case 'css': 
+    case 'py': 
+    case 'rust': 
+    case 'dart': 
     case 'java':
+    case 'c':
+    case 'cpp':
+    case 'h':
+    case 'hpp':
+    case 'ts':
+    case 'tsx':
+    case 'js':
+    case 'jsx':
       return (
         <svg
           viewBox="0 0 24 24"

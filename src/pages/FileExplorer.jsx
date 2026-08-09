@@ -241,7 +241,7 @@ const FileExplorer = () => {
                   className="bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700/50 rounded-xl p-4 text-left transition-colors group"
                 >
                   <div className="flex items-center gap-3">
-                    <getFileIcon(fileType.type, fileType.name) />
+                    <getFileIcon(fileType.type) />
 
                     <div className="flex-1 min-w-0">
                       <p className="text-white font-medium truncate group-hover:text-indigo-400 transition-colors">
@@ -307,10 +307,10 @@ const FileExplorer = () => {
               No hay directorio seleccionado
             </h3>
             <p className="text-slate-500 max-w-md mx-auto mb-6">
-              Selecciona un directorio de tu computadora para empezar a explorar.
+              Selecciona un directorio de tu computadora para empezar a explorar。
               <br />
               <span className="text-slate-600 text-sm">
-                Los archivos no se suben a ningún servidor, quedan en tu dispositivo.
+                Los archivos no se suben a ningún servidor, quedan en tu dispositivo。
               </span>
             </p>
           </div>
