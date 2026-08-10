@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import getFileIcon from '../components/FileIcon';
-
+import { generateVideoThumbnail } from '../components/videoThumbnail';
 /* ================================================================
    PERSISTENCIA — IndexedDB (handles) + localStorage (preferencias)
    ================================================================ */
@@ -442,10 +442,24 @@ const FileExplorer = () => {
           name: handle.kind === 'directory' ? `${name}/` : name,
           handle,
           kind: handle.kind,
+          thumbnail: null, // Nuevo campo
         };
         if (handle.kind === 'file') {
           try {
             metadata.file = await handle.getFile();
+              // Si es un archivo de video, generamos su miniatura
+              const fileType = getFileType(name);
+              // Dentro de loadDirectory en FileExplorer.jsx
+              if (fileType.type === 'video') {
+                // Genera la miniatura sin detener el bucle principal de renderizado
+                generateVideoThumbnail(fileObj).then((thumb) => {
+                  if (thumb) {
+                    setFiles((prev) =>
+                      prev.map((f) => (f.name === entry.name ? { ...f, thumbnail: thumb } : f))
+                    );
+                  }
+                });
+              }
           } catch {
             // archivo individual ilegible, se ignora
           }
@@ -723,91 +737,97 @@ const FileExplorer = () => {
   /* ================================================================
      ✅ NUEVO: Clases base para archivos ocultos (estilo gris)
      ================================================================ */
-  const hiddenClasses = (file, removing) => {
-    const hidden = isHiddenFile(file.name);
-    const junk = isJunkFile(file.name);
-    if (!hidden) return '';
-    if (removing) return '';
-    if (junk) return 'opacity-40 grayscale border-dashed border-slate-600/40';
-    return 'opacity-40 grayscale border-dashed border-slate-600/30';
-  };
+const hiddenClasses = (file, removing) => {
+  const hidden = isHiddenFile(file.name);
+  const junk = isJunkFile(file.name);
+  if (removing) return 'opacity-0 scale-95 pointer-events-none';
+  if (junk) return 'border-red-900/40 bg-red-950/10 hover:border-red-700/50';
+  if (hidden) return 'border-slate-700/40 bg-slate-800/30 hover:border-indigo-500/40';
+  return 'border-slate-700/60 bg-slate-800/50 hover:border-indigo-500/60 hover:bg-slate-800/80';
+};
 
   /* ================================================================
      RENDER HELPERS
      ================================================================ */
 
-  const renderItemCard = (file) => {
-    const fileType = getFileType(file.name);
-    const IconComponent = getFileIcon(fileType.type);
-    const imageUrl = imagePreviews[file.name];
-    const isImage = fileType.type === 'image';
-    const junk = isJunkFile(file.name);
-    const hidden = isHiddenFile(file.name);
-    const removing = removingFiles.has(file.name);
-    const showX = file.kind === 'file' && !junk;
 
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => handleFileClick(file)}
-        onKeyDown={(e) => onCardKey(e, file)}
-        title={junk ? 'Archivo basura de macOS — click para eliminarlo' : hidden ? 'Archivo oculto' : undefined}
-        className={`relative group bg-slate-800/50 border rounded-xl p-4 text-left cursor-pointer select-none transition-all duration-300 ${
-          removing
-            ? 'opacity-0 scale-90 pointer-events-none border-slate-700/50'
-            : junk
-            ? 'opacity-40 border-dashed border-slate-600/40 hover:opacity-70 hover:border-red-500/40'
-            : hidden
-            ? 'opacity-40 border-dashed border-slate-600/30 hover:opacity-70'
-            : 'opacity-100 border-slate-700/50 hover:bg-slate-700/50'
-        }`}
-      >
-        {showX && (
-          <DeleteXButton onClick={(e) => onDeleteClick(e, file)} className="absolute top-2 right-2" />
-        )}
+const renderItemCard = (file) => {
+  const fileType = getFileType(file.name);
+  const IconComponent = getFileIcon(fileType.type);
 
-        <div className="flex items-center gap-3">
-          {isImage && imageUrl && !hidden ? (
+  const isImage = fileType.type === 'image';
+  const isVideo = fileType.type === 'video';
+  const previewUrl = isImage ? imagePreviews[file.name] : isVideo ? file.thumbnail : null;
+
+  const junk = isJunkFile(file.name);
+  const hidden = isHiddenFile(file.name);
+  const removing = removingFiles.has(file.name);
+  const showX = file.kind === 'file' && !junk;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => handleFileClick(file)}
+      onKeyDown={(e) => onCardKey(e, file)}
+      title={junk ? 'Archivo basura de macOS' : hidden ? 'Archivo oculto' : undefined}
+      className={`relative group border rounded-xl p-4 text-left cursor-pointer select-none transition-all duration-200 ${hiddenClasses(file, removing)}`}
+    >
+      {showX && (
+        <DeleteXButton onClick={(e) => onDeleteClick(e, file)} className="absolute top-2 right-2" />
+      )}
+
+      <div className="flex items-center gap-3">
+        {/* Previsualización: Imagen o Miniatura de Video */}
+        {previewUrl && !hidden ? (
+          <div className="relative w-12 h-12 shrink-0">
             <img
-              src={imageUrl}
+              src={previewUrl}
               alt={file.name}
-              className="w-12 h-12 rounded-lg object-cover border border-slate-600/50 shrink-0"
+              className="w-12 h-12 rounded-lg object-cover border border-slate-600/40"
               loading="lazy"
             />
-          ) : (
-            <span className={hidden ? 'opacity-50 grayscale' : ''}>
-              {IconComponent}
-            </span>
-          )}
-          <div className="flex-1 min-w-0">
-            <p className={`font-medium truncate transition-colors ${
-              junk
-                ? 'text-slate-600 line-through'
-                : hidden
-                ? 'text-slate-500'
-                : 'text-white group-hover:text-indigo-400'
-            }`}>
-              {file.name}
-            </p>
-            <p className={`text-xs truncate flex items-center gap-1.5 ${
-              junk ? 'text-red-400/70' : hidden ? 'text-slate-600' : 'text-slate-500'
-            }`}>
-              {junk
-                ? 'Basura · click para eliminar'
-                : `${fileType.name}${file.file ? ` · ${formatFileSize(file.file.size)}` : ''}`}
-              {hidden && !junk && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-700/50 text-slate-500 border border-slate-600/30">
-                  oculto
-                </span>
-              )}
-            </p>
+            {isVideo && (
+              <div className="absolute bottom-1 right-1 bg-black/80 rounded p-0.5 backdrop-blur-xs">
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-2.5 h-2.5 text-white">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+            )}
           </div>
+        ) : (
+          <span className={hidden ? 'text-slate-400 opacity-80' : 'text-indigo-400'}>
+            {IconComponent}
+          </span>
+        )}
+
+        <div className="flex-1 min-w-0">
+          <p className={`font-medium truncate transition-colors ${
+            junk
+              ? 'text-slate-600 line-through'
+              : hidden
+              ? 'text-slate-300' // Gris claro visible
+              : 'text-white group-hover:text-indigo-400'
+          }`}>
+            {file.name}
+          </p>
+          <p className={`text-xs truncate flex items-center gap-1.5 ${
+            junk ? 'text-red-400/70' : hidden ? 'text-slate-400' : 'text-slate-500'
+          }`}>
+            {junk
+              ? 'Basura · click para eliminar'
+              : `${fileType.name}${file.file ? ` · ${formatFileSize(file.file.size)}` : ''}`}
+            {hidden && !junk && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-700/60 text-slate-300 border border-slate-600/40">
+                oculto
+              </span>
+            )}
+          </p>
         </div>
       </div>
-    );
-  };
-
+    </div>
+  );
+};
   // Vista MASONRY
   const renderMasonry = () => (
     <div className="columns-1 sm:columns-2 xl:columns-3 2xl:columns-4 gap-4">
