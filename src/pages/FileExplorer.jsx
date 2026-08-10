@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import getFileIcon from '../components/FileIcon';
 import { generateVideoThumbnail } from '../components/videoThumbnail';
+import CodeEditor from '../components/CodeEditor';
 /* ================================================================
    PERSISTENCIA — IndexedDB (handles) + localStorage (preferencias)
    ================================================================ */
@@ -99,6 +100,9 @@ const getFileType = (name) => {
   ) {
     return { type: 'code', name: ext.toUpperCase() };
   }
+  if (ext === 'pdf') {
+    return { type: 'pdf', name: 'PDF' };
+  }
   if (name.endsWith('/')) {
     return { type: 'folder', name: 'Carpeta' };
   }
@@ -111,6 +115,44 @@ const formatFileSize = (bytes) => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
+
+/** Mapea extensión → lenguaje de Prism para CodeEditor */
+const getLanguageFromName = (name) => {
+  const ext = (name || '').split('.').pop()?.toLowerCase() || '';
+  const map = {
+    js: 'javascript',
+    jsx: 'jsx',
+    ts: 'typescript',
+    tsx: 'tsx',
+    html: 'html',
+    htm: 'html',
+    css: 'css',
+    scss: 'scss',
+    json: 'json',
+    md: 'markdown',
+    markdown: 'markdown',
+    py: 'python',
+    rs: 'rust',
+    go: 'go',
+    java: 'java',
+    c: 'c',
+    cpp: 'cpp',
+    h: 'c',
+    hpp: 'cpp',
+    sh: 'bash',
+    bash: 'bash',
+    sql: 'sql',
+    php: 'php',
+    rb: 'ruby',
+    yml: 'yaml',
+    yaml: 'yaml',
+    xml: 'xml',
+    txt: 'text',
+    log: 'text',
+    csv: 'text',
+  };
+  return map[ext] || 'javascript';
 };
 
 /* ================================================================
@@ -167,14 +209,20 @@ const ToggleSwitch = ({ checked, onChange, label }) => (
 );
 
 /* ================================================================
-   VISOR DE ARCHIVOS
+   VISOR DE ARCHIVOS (con edición de nombre y contenido)
    ================================================================ */
-const FileViewer = ({ entry, onClose }) => {
+const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle }) => {
   const [mediaUrl, setMediaUrl] = useState(null);
   const [textContent, setTextContent] = useState(null);
+  const [editContent, setEditContent] = useState('');
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState(cleanName(entry.name));
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState(null);
   const fileType = getFileType(entry.name);
+  const isEditable = ['text', 'code'].includes(fileType.type);
 
   useEffect(() => {
     let url = null;
@@ -189,12 +237,16 @@ const FileViewer = ({ entry, onClose }) => {
         if (['image', 'video', 'audio'].includes(fileType.type)) {
           url = URL.createObjectURL(file);
           setMediaUrl(url);
-        } else if (['text', 'code'].includes(fileType.type)) {
+        } else if (isEditable) {
           if (file.size > 2 * 1024 * 1024) {
             setTextContent('⚠️ Archivo demasiado grande para previsualizar (> 2 MB).');
+            setEditContent('');
           } else {
             const text = await file.text();
-            if (!cancelled) setTextContent(text);
+            if (!cancelled) {
+              setTextContent(text);
+              setEditContent(text);
+            }
           }
         }
       } catch (e) {
@@ -207,13 +259,60 @@ const FileViewer = ({ entry, onClose }) => {
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [entry, fileType.type]);
+  }, [entry, fileType.type, isEditable]);
 
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  const handleRename = async () => {
+    const newName = editName.trim();
+    if (!newName || newName === cleanName(entry.name) || !parentHandle) {
+      setIsEditingName(false);
+      return;
+    }
+    setIsSaving(true);
+    setSaveMsg(null);
+    try {
+      // Intentar rename con la API moderna si está disponible
+      if (typeof entry.handle.move === 'function') {
+        await entry.handle.move(newName);
+      } else {
+        // Fallback: no soportado de forma nativa en todos los navegadores sin move
+        throw new Error('Renombrar requiere Chrome/Edge reciente con File System Access API completa.');
+      }
+      setIsEditingName(false);
+      setSaveMsg('Nombre actualizado');
+      if (onRenamed) onRenamed(entry, newName);
+    } catch (e) {
+      setError(`No se pudo renombrar: ${e.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveContent = async () => {
+    if (!isEditable || !entry.handle) return;
+    setIsSaving(true);
+    setSaveMsg(null);
+    try {
+      const writable = await entry.handle.createWritable();
+      await writable.write(editContent);
+      await writable.close();
+      setTextContent(editContent);
+      setSaveMsg('Contenido guardado');
+      if (onContentSaved) onContentSaved(entry);
+      setTimeout(() => setSaveMsg(null), 2500);
+    } catch (e) {
+      setError(`No se pudo guardar: ${e.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div
@@ -223,28 +322,86 @@ const FileViewer = ({ entry, onClose }) => {
       aria-modal="true"
     >
       <div
-        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-fade-in"
+        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-700/60 shrink-0">
-          <div className="min-w-0">
-            <p className="text-white font-semibold truncate">{entry.name}</p>
-            <p className="text-slate-500 text-xs">
+        {/* Header con nombre editable */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-700/60 shrink-0 gap-3">
+          <div className="min-w-0 flex-1">
+            {isEditingName ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRename();
+                    if (e.key === 'Escape') setIsEditingName(false);
+                  }}
+                  className="bg-slate-800 border border-indigo-500/60 rounded-lg px-3 py-1.5 text-white text-sm font-medium w-full max-w-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  onClick={handleRename}
+                  disabled={isSaving}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium disabled:opacity-50"
+                >
+                  Guardar
+                </button>
+                <button
+                  onClick={() => setIsEditingName(false)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 group">
+                <p className="text-white font-semibold truncate">{entry.name}</p>
+                <button
+                  onClick={() => setIsEditingName(true)}
+                  title="Editar nombre"
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-indigo-400 transition-all"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            <p className="text-slate-500 text-xs mt-0.5">
               {fileType.name}
               {meta && ` · ${formatFileSize(meta.size)}`}
               {meta?.mime && ` · ${meta.mime}`}
+              {saveMsg && <span className="ml-2 text-green-400">✓ {saveMsg}</span>}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="ml-4 p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shrink-0"
-            aria-label="Cerrar visor"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-5 h-5">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {isEditable && textContent !== null && !String(textContent).startsWith('⚠️') && (
+              <button
+                onClick={handleSaveContent}
+                disabled={isSaving || editContent === textContent}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
+                </svg>
+                Guardar contenido
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              aria-label="Cerrar visor"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-5 h-5">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-auto bg-black/40 flex items-center justify-center min-h-[300px]">
@@ -254,20 +411,56 @@ const FileViewer = ({ entry, onClose }) => {
             <img src={mediaUrl} alt={entry.name} className="max-w-full max-h-[70vh] object-contain" />
           )}
 
+          {/* Video player con diseño mejorado */}
           {!error && fileType.type === 'video' && mediaUrl && (
-            <video src={mediaUrl} controls autoPlay className="max-w-full max-h-[70vh]" />
+            <div className="w-full max-w-4xl p-4 flex flex-col items-center">
+              <div className="relative w-full rounded-xl overflow-hidden border border-slate-700/80 shadow-2xl bg-black ring-1 ring-white/5">
+                <video
+                  src={mediaUrl}
+                  controls
+                  autoPlay
+                  className="w-full max-h-[65vh] block bg-black"
+                  style={{ aspectRatio: '16/9' }}
+                />
+                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-black/70 backdrop-blur text-xs text-white/90 font-medium border border-white/10">
+                  {fileType.name}
+                </div>
+              </div>
+              <p className="text-slate-500 text-xs mt-3 truncate max-w-full">{entry.name}</p>
+            </div>
           )}
 
           {!error && fileType.type === 'audio' && mediaUrl && (
             <div className="p-8 w-full max-w-xl">
-              <audio src={mediaUrl} controls autoPlay className="w-full" />
+              <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-6 shadow-xl">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-yellow-500/30 to-amber-600/20 flex items-center justify-center border border-yellow-500/30">
+                    {getFileIcon('audio')}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white font-medium truncate">{entry.name}</p>
+                    <p className="text-slate-500 text-xs">{fileType.name}{meta && ` · ${formatFileSize(meta.size)}`}</p>
+                  </div>
+                </div>
+                <audio src={mediaUrl} controls autoPlay className="w-full" />
+              </div>
             </div>
           )}
 
-          {!error && ['text', 'code'].includes(fileType.type) && textContent !== null && (
-            <pre className="w-full h-full p-6 text-sm text-slate-200 font-mono whitespace-pre-wrap break-words overflow-auto text-left">
-              {textContent}
-            </pre>
+          {!error && isEditable && textContent !== null && (
+            textContent.startsWith('⚠️') ? (
+              <p className="text-amber-400/90 text-sm p-8 text-center">{textContent}</p>
+            ) : (
+              <div className="w-full h-full flex flex-col min-h-[420px]" style={{ height: 'min(65vh, 560px)' }}>
+                <CodeEditor
+                  value={editContent}
+                  onChange={setEditContent}
+                  language={getLanguageFromName(entry.name)}
+                  placeholder="// Escribe o edita el código aquí…"
+                  zoom={1}
+                />
+              </div>
+            )
           )}
 
           {!error && !['image', 'video', 'audio', 'text', 'code'].includes(fileType.type) && (
@@ -275,6 +468,9 @@ const FileViewer = ({ entry, onClose }) => {
               <div className="w-20 h-20 mx-auto mb-4 text-slate-600">{getFileIcon(fileType.type)}</div>
               <p className="text-slate-400">Vista previa no disponible para este tipo de archivo.</p>
               {meta && <p className="text-slate-600 text-sm mt-2">Tamaño: {formatFileSize(meta.size)}</p>}
+              {fileType.type === 'pdf' && (
+                <p className="text-indigo-400 text-sm mt-3">Los PDF se abren en una pestaña nueva al hacer clic.</p>
+              )}
             </div>
           )}
         </div>
@@ -384,19 +580,30 @@ const FileExplorer = () => {
   const [isRestoring, setIsRestoring] = useState(false);
   const [removingFiles, setRemovingFiles] = useState(() => new Set());
   const [confirmEntry, setConfirmEntry] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [createType, setCreateType] = useState(null); // 'file' | 'folder'
+  const [createName, setCreateName] = useState('');
+  const [dragOverTarget, setDragOverTarget] = useState(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
 
   const currentDir = depth > 0 ? dirStack[depth - 1] : null;
 
   /* ---------------------------------------------------------------
-     ✅ NUEVO: Filtrar archivos según toggle de ocultos
+     ✅ Filtrar por ocultos + búsqueda
      --------------------------------------------------------------- */
-  const filteredFiles = showHiddenFiles
+  const baseFiltered = showHiddenFiles
     ? files
     : files.filter((f) => !isHiddenFile(f.name));
 
-  const hiddenCount = files.length - filteredFiles.length;
+  const filteredFiles = searchQuery.trim()
+    ? baseFiltered.filter((f) =>
+        cleanName(f.name).toLowerCase().includes(searchQuery.trim().toLowerCase())
+      )
+    : baseFiltered;
+
+  const hiddenCount = files.length - (showHiddenFiles ? files.length : baseFiltered.length);
 
   /* ---------------------------------------------------------------
      Limpieza de object URLs al desmontar
@@ -447,19 +654,19 @@ const FileExplorer = () => {
         if (handle.kind === 'file') {
           try {
             metadata.file = await handle.getFile();
-              // Si es un archivo de video, generamos su miniatura
-              const fileType = getFileType(name);
-              // Dentro de loadDirectory en FileExplorer.jsx
-              if (fileType.type === 'video') {
-                // Genera la miniatura sin detener el bucle principal de renderizado
-                generateVideoThumbnail(fileObj).then((thumb) => {
-                  if (thumb) {
-                    setFiles((prev) =>
-                      prev.map((f) => (f.name === entry.name ? { ...f, thumbnail: thumb } : f))
-                    );
-                  }
-                });
-              }
+            const fileType = getFileType(name);
+            if (fileType.type === 'video') {
+              // Genera la miniatura de forma asíncrona sin bloquear
+              generateVideoThumbnail(metadata.file).then((thumb) => {
+                if (thumb) {
+                  setFiles((prev) =>
+                    prev.map((f) =>
+                      f.name === metadata.name ? { ...f, thumbnail: thumb } : f
+                    )
+                  );
+                }
+              });
+            }
           } catch {
             // archivo individual ilegible, se ignora
           }
@@ -712,10 +919,26 @@ const FileExplorer = () => {
     }
   };
 
-  const handleFileClick = (entry) => {
+  const handleFileClick = async (entry) => {
     if (removingFiles.has(entry.name)) return;
     if (entry.kind === 'directory') return navigateToDirectory(entry);
     if (isJunkFile(entry.name)) return performDelete(entry);
+
+    const ft = getFileType(entry.name);
+    // PDFs se abren en nueva pestaña (Chrome los soporta nativamente)
+    if (ft.type === 'pdf') {
+      try {
+        const file = await entry.handle.getFile();
+        const url = URL.createObjectURL(file);
+        window.open(url, '_blank', 'noopener,noreferrer');
+        // Revocar después de un tiempo razonable
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      } catch (e) {
+        setErrorMessage(`No se pudo abrir el PDF: ${e.message}`);
+      }
+      return;
+    }
+
     setViewerEntry(entry);
   };
 
@@ -732,6 +955,120 @@ const FileExplorer = () => {
 
   const onCardKey = (e, entry) => {
     if (e.key === 'Enter') handleFileClick(entry);
+  };
+
+  /* ---------------------------------------------------------------
+     Crear archivo / carpeta
+     --------------------------------------------------------------- */
+  const openCreate = (type) => {
+    setCreateType(type);
+    setCreateName(type === 'folder' ? 'Nueva carpeta' : 'nuevo-archivo.txt');
+    setShowCreateMenu(false);
+  };
+
+  const handleCreate = async () => {
+    if (!currentDir?.handle || !createName.trim()) return;
+    const name = createName.trim();
+    try {
+      if (createType === 'folder') {
+        await currentDir.handle.getDirectoryHandle(name, { create: true });
+      } else {
+        const fh = await currentDir.handle.getFileHandle(name, { create: true });
+        const writable = await fh.createWritable();
+        await writable.write('');
+        await writable.close();
+      }
+      setCreateType(null);
+      setCreateName('');
+      await loadDirectory(currentDir.handle);
+    } catch (e) {
+      setErrorMessage(`No se pudo crear: ${e.message}`);
+    }
+  };
+
+  /* ---------------------------------------------------------------
+     Drag & Drop — mover archivos entre carpetas + soltar desde Finder
+     --------------------------------------------------------------- */
+  const handleDragStart = (e, file) => {
+    if (file.kind !== 'file') return;
+    e.dataTransfer.setData('application/x-devtools-file', JSON.stringify({ name: file.name }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, target) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (target?.kind === 'directory') {
+      setDragOverTarget(target.name);
+    }
+  };
+
+  const handleDragLeave = () => setDragOverTarget(null);
+
+  const handleDropOnFolder = async (e, targetFolder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverTarget(null);
+    if (!currentDir?.handle || targetFolder.kind !== 'directory') return;
+
+    // Interno (desde la interfaz)
+    const internal = e.dataTransfer.getData('application/x-devtools-file');
+    if (internal) {
+      try {
+        const { name } = JSON.parse(internal);
+        const srcEntry = files.find((f) => f.name === name);
+        if (!srcEntry || srcEntry.kind !== 'file') return;
+
+        // Mover con API moderna si existe
+        if (typeof srcEntry.handle.move === 'function') {
+          await srcEntry.handle.move(targetFolder.handle, name);
+        } else {
+          // Fallback: copiar contenido + borrar origen
+          const file = await srcEntry.handle.getFile();
+          const destHandle = await targetFolder.handle.getFileHandle(cleanName(name), { create: true });
+          const writable = await destHandle.createWritable();
+          await writable.write(await file.arrayBuffer());
+          await writable.close();
+          await currentDir.handle.removeEntry(cleanName(name));
+        }
+        await loadDirectory(currentDir.handle);
+      } catch (err) {
+        setErrorMessage(`No se pudo mover: ${err.message}`);
+      }
+      return;
+    }
+
+    // Externo (desde Finder / explorador del SO)
+    if (e.dataTransfer.files?.length) {
+      try {
+        for (const file of e.dataTransfer.files) {
+          const destHandle = await targetFolder.handle.getFileHandle(file.name, { create: true });
+          const writable = await destHandle.createWritable();
+          await writable.write(await file.arrayBuffer());
+          await writable.close();
+        }
+        await loadDirectory(currentDir.handle);
+      } catch (err) {
+        setErrorMessage(`No se pudo importar: ${err.message}`);
+      }
+    }
+  };
+
+  const handleDropOnCurrent = async (e) => {
+    e.preventDefault();
+    setDragOverTarget(null);
+    if (!currentDir?.handle || !e.dataTransfer.files?.length) return;
+    try {
+      for (const file of e.dataTransfer.files) {
+        const destHandle = await currentDir.handle.getFileHandle(file.name, { create: true });
+        const writable = await destHandle.createWritable();
+        await writable.write(await file.arrayBuffer());
+        await writable.close();
+      }
+      await loadDirectory(currentDir.handle);
+    } catch (err) {
+      setErrorMessage(`No se pudo importar archivos: ${err.message}`);
+    }
   };
 
   /* ================================================================
@@ -763,15 +1100,23 @@ const renderItemCard = (file) => {
   const hidden = isHiddenFile(file.name);
   const removing = removingFiles.has(file.name);
   const showX = file.kind === 'file' && !junk;
+  const isDropTarget = file.kind === 'directory' && dragOverTarget === file.name;
 
   return (
     <div
       role="button"
+      draggable={file.kind === 'file' && !junk}
+      onDragStart={(e) => handleDragStart(e, file)}
+      onDragOver={(e) => handleDragOver(e, file)}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => handleDropOnFolder(e, file)}
       tabIndex={0}
       onClick={() => handleFileClick(file)}
       onKeyDown={(e) => onCardKey(e, file)}
       title={junk ? 'Archivo basura de macOS' : hidden ? 'Archivo oculto' : undefined}
-      className={`relative group border rounded-xl p-4 text-left cursor-pointer select-none transition-all duration-200 ${hiddenClasses(file, removing)}`}
+      className={`relative group border rounded-xl p-4 text-left cursor-pointer select-none transition-all duration-200 ${hiddenClasses(file, removing)} ${
+        isDropTarget ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900 scale-[1.02]' : ''
+      }`}
     >
       {showX && (
         <DeleteXButton onClick={(e) => onDeleteClick(e, file)} className="absolute top-2 right-2" />
@@ -1076,13 +1421,57 @@ const renderItemCard = (file) => {
       )}
 
       {/* Contenido + toolbar */}
-      {!isLoading && currentDir && files.length > 0 && (
+      {!isLoading && currentDir && (
         <>
           <div className="px-6 pt-4 flex flex-col gap-3">
-            {/* Fila 1: contador + toggle de ocultos + toggle de vistas */}
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-4">
-                <p className="text-slate-500 text-sm">
+              <div className="flex items-center gap-3 flex-1 min-w-0 flex-wrap">
+                {/* Buscador */}
+                <div className="relative flex-1 min-w-[180px] max-w-xs">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Buscar archivos…"
+                    className="w-full bg-slate-800/70 border border-slate-700/60 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50"
+                  />
+                </div>
+
+                {/* Botón Crear */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowCreateMenu((v) => !v)}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Crear
+                  </button>
+                  {showCreateMenu && (
+                    <div className="absolute top-full left-0 mt-1.5 z-20 bg-slate-800 border border-slate-700 rounded-xl shadow-xl py-1.5 min-w-[160px] animate-fade-in">
+                      <button
+                        onClick={() => openCreate('file')}
+                        className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-slate-700/80 flex items-center gap-2"
+                      >
+                        Nuevo archivo
+                      </button>
+                      <button
+                        onClick={() => openCreate('folder')}
+                        className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-slate-700/80 flex items-center gap-2"
+                      >
+                        Nueva carpeta
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-slate-500 text-sm whitespace-nowrap">
                   {filteredFiles.length} elemento{filteredFiles.length !== 1 && 's'}
                   {!showHiddenFiles && hiddenCount > 0 && (
                     <span className="text-slate-600 ml-1">
@@ -1091,7 +1480,6 @@ const renderItemCard = (file) => {
                   )}
                 </p>
 
-                {/* ✅ NUEVO: Interruptor de archivos ocultos */}
                 <ToggleSwitch
                   checked={showHiddenFiles}
                   onChange={() => setShowHiddenFiles((v) => !v)}
@@ -1124,7 +1512,6 @@ const renderItemCard = (file) => {
               </div>
             </div>
 
-            {/* Fila 2: hint de archivos basura */}
             {showHiddenFiles && files.some((f) => isJunkFile(f.name)) && (
               <p className="text-slate-600 text-xs">
                 💡 Click en archivos <span className="font-mono text-red-400/70">._*</span> para eliminarlos directamente
@@ -1132,10 +1519,27 @@ const renderItemCard = (file) => {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            {viewMode === 'masonry' && renderMasonry()}
-            {viewMode === 'grid' && renderGrid()}
-            {viewMode === 'list' && renderList()}
+          <div
+            className="flex-1 overflow-y-auto p-6"
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+            onDrop={handleDropOnCurrent}
+          >
+            {files.length === 0 ? (
+              <div className="text-center py-16 text-slate-500">
+                <p className="mb-2">Directorio vacío</p>
+                <p className="text-sm text-slate-600">Arrastra archivos aquí o usa el botón Crear</p>
+              </div>
+            ) : filteredFiles.length === 0 ? (
+              <div className="text-center py-16 text-slate-500">
+                No hay resultados para “{searchQuery}”
+              </div>
+            ) : (
+              <>
+                {viewMode === 'masonry' && renderMasonry()}
+                {viewMode === 'grid' && renderGrid()}
+                {viewMode === 'list' && renderList()}
+              </>
+            )}
           </div>
         </>
       )}
@@ -1205,13 +1609,72 @@ const renderItemCard = (file) => {
       )}
 
       {/* Modales */}
-      {viewerEntry && <FileViewer entry={viewerEntry} onClose={() => setViewerEntry(null)} />}
+      {viewerEntry && (
+        <FileViewer
+          entry={viewerEntry}
+          onClose={() => setViewerEntry(null)}
+          parentHandle={currentDir?.handle}
+          onRenamed={(oldEntry, newName) => {
+            setFiles((prev) =>
+              prev.map((f) =>
+                f.name === oldEntry.name
+                  ? { ...f, name: oldEntry.kind === 'directory' ? `${newName}/` : newName }
+                  : f
+              )
+            );
+            setViewerEntry(null);
+            if (currentDir) loadDirectory(currentDir.handle);
+          }}
+          onContentSaved={() => {
+            // opcional: refrescar tamaño etc.
+          }}
+        />
+      )}
       {confirmEntry && (
         <ConfirmDialog
           entry={confirmEntry}
           onCancel={() => setConfirmEntry(null)}
           onConfirm={confirmDelete}
         />
+      )}
+
+      {/* Modal Crear archivo/carpeta */}
+      {createType && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setCreateType(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-white font-semibold text-lg mb-4">
+              {createType === 'folder' ? 'Nueva carpeta' : 'Nuevo archivo'}
+            </h3>
+            <input
+              autoFocus
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder={createType === 'folder' ? 'Nombre de la carpeta' : 'nombre.ext'}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setCreateType(null)}
+                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreate}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"
+              >
+                Crear
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
