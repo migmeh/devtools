@@ -9,6 +9,7 @@ const DB_NAME = 'DevToolsFileExplorer';
 const DB_STORE = 'sessions';
 const DB_KEY = 'current-session';
 const VIEW_STORAGE_KEY = 'dt-fe:viewMode';
+const HIDDEN_TOGGLE_KEY = 'dt-fe:showHidden';
 const VIEW_MODES = ['masonry', 'grid', 'list'];
 
 const openDB = () =>
@@ -65,8 +66,15 @@ const clearSession = async () => {
 /* ================================================================
    Clasificación de archivos
    ================================================================ */
-// ✅ Archivos basura de macOS
+
+// ✅ Archivos basura de macOS (subconjunto de ocultos)
 const isJunkFile = (name) => name.startsWith('._') || name === '.DS_Store';
+
+// ✅ NUEVO — Archivos ocultos: cualquier nombre que empiece con "."
+const isHiddenFile = (name) => {
+  const clean = name.replace(/\/+$/, '');
+  return clean.startsWith('.');
+};
 
 const getFileType = (name) => {
   if (isJunkFile(name)) return { type: 'file', name: 'Sistema' };
@@ -106,7 +114,7 @@ const formatFileSize = (bytes) => {
 };
 
 /* ================================================================
-   ✅ PUNTO 4 — Utilidades URL ↔ stack de navegación
+   Utilidades URL ↔ stack de navegación
    ================================================================ */
 const cleanName = (n) => n.replace(/\/+$/, '');
 const stackToPath = (activeStack) =>
@@ -118,7 +126,6 @@ const pathParams = (activeStack) => {
   return p ? { path: p } : {};
 };
 
-// Devuelve la profundidad (1-based) si la ruta es resoluble dentro del stack
 const findDepthForPath = (stack, segments) => {
   for (let i = 0; i < segments.length; i++) {
     const entry = stack[i + 1];
@@ -126,6 +133,38 @@ const findDepthForPath = (stack, segments) => {
   }
   return Math.min(segments.length + 1, stack.length);
 };
+
+/* ================================================================
+   ✅ NUEVO — Interruptor estilizado (toggle switch)
+   ================================================================ */
+const ToggleSwitch = ({ checked, onChange, label }) => (
+  <button
+    onClick={onChange}
+    role="switch"
+    aria-checked={checked}
+    aria-label={label}
+    className="relative flex items-center gap-2 group/toggle cursor-pointer select-none"
+  >
+    {/* Riel */}
+    <span
+      className={`relative inline-flex items-center w-9 h-5 rounded-full transition-colors duration-300 ${
+        checked ? 'bg-indigo-600' : 'bg-slate-600'
+      }`}
+    >
+      {/* Perilla */}
+      <span
+        className={`inline-block w-3.5 h-3.5 rounded-full bg-white shadow-md transform transition-transform duration-300 ${
+          checked ? 'translate-x-[18px]' : 'translate-x-[3px]'
+        }`}
+      />
+    </span>
+    <span className={`text-xs font-medium transition-colors duration-200 ${
+      checked ? 'text-indigo-400' : 'text-slate-500'
+    } group-hover/toggle:text-white`}>
+      {label}
+    </span>
+  </button>
+);
 
 /* ================================================================
    VISOR DE ARCHIVOS
@@ -245,7 +284,7 @@ const FileViewer = ({ entry, onClose }) => {
 };
 
 /* ================================================================
-   ✅ PUNTO 2 — Modal de confirmación de eliminación
+   Modal de confirmación de eliminación
    ================================================================ */
 const ConfirmDialog = ({ entry, onCancel, onConfirm }) => {
   useEffect(() => {
@@ -303,7 +342,7 @@ const ConfirmDialog = ({ entry, onCancel, onConfirm }) => {
 };
 
 /* ================================================================
-   ✅ PUNTO 2 — Botón ✕ reutilizable
+   Botón ✕ de eliminación
    ================================================================ */
 const DeleteXButton = ({ onClick, className = '' }) => (
   <button
@@ -323,7 +362,6 @@ const DeleteXButton = ({ onClick, className = '' }) => (
    COMPONENTE PRINCIPAL
    ================================================================ */
 const FileExplorer = () => {
-  // Stack completo + profundidad activa (permite ⬅️➡️ en el historial del navegador)
   const [dirStack, setDirStack] = useState([]);
   const [depth, setDepth] = useState(0);
   const [files, setFiles] = useState([]);
@@ -331,24 +369,34 @@ const FileExplorer = () => {
   const [errorMessage, setErrorMessage] = useState(null);
   const [imagePreviews, setImagePreviews] = useState({});
 
-  // ✅ Punto 3: vista persistida en localStorage
   const [viewMode, setViewMode] = useState(() => {
     const saved = localStorage.getItem(VIEW_STORAGE_KEY);
     return VIEW_MODES.includes(saved) ? saved : 'grid';
   });
 
+  // ✅ NUEVO: toggle de archivos ocultos con persistencia
+  const [showHiddenFiles, setShowHiddenFiles] = useState(() => {
+    return localStorage.getItem(HIDDEN_TOGGLE_KEY) === 'true';
+  });
+
   const [viewerEntry, setViewerEntry] = useState(null);
   const [pendingSession, setPendingSession] = useState(null);
   const [isRestoring, setIsRestoring] = useState(false);
-
-  // ✅ Puntos 1 y 2: archivos en proceso de eliminación (animación)
   const [removingFiles, setRemovingFiles] = useState(() => new Set());
   const [confirmEntry, setConfirmEntry] = useState(null);
 
-  // ✅ Punto 4: sincronización con la URL
   const [searchParams, setSearchParams] = useSearchParams();
 
   const currentDir = depth > 0 ? dirStack[depth - 1] : null;
+
+  /* ---------------------------------------------------------------
+     ✅ NUEVO: Filtrar archivos según toggle de ocultos
+     --------------------------------------------------------------- */
+  const filteredFiles = showHiddenFiles
+    ? files
+    : files.filter((f) => !isHiddenFile(f.name));
+
+  const hiddenCount = files.length - filteredFiles.length;
 
   /* ---------------------------------------------------------------
      Limpieza de object URLs al desmontar
@@ -365,11 +413,15 @@ const FileExplorer = () => {
   }, []);
 
   /* ---------------------------------------------------------------
-     ✅ Punto 3: persistir la vista elegida
+     Persistir preferencias
      --------------------------------------------------------------- */
   useEffect(() => {
     localStorage.setItem(VIEW_STORAGE_KEY, viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem(HIDDEN_TOGGLE_KEY, String(showHiddenFiles));
+  }, [showHiddenFiles]);
 
   /* ---------------------------------------------------------------
      Cargar contenido de un directorio
@@ -424,7 +476,7 @@ const FileExplorer = () => {
   }, []);
 
   /* ---------------------------------------------------------------
-     ✅ Punto 4: sincronizar stack → URL (red de seguridad, replace)
+     Sincronizar stack → URL
      --------------------------------------------------------------- */
   useEffect(() => {
     if (!depth) return;
@@ -436,7 +488,7 @@ const FileExplorer = () => {
   }, [dirStack, depth]);
 
   /* ---------------------------------------------------------------
-     ✅ Punto 4: sincronizar URL → stack (botones ⬅️➡️ del navegador)
+     Sincronizar URL → stack (botones ⬅️➡️ del navegador)
      --------------------------------------------------------------- */
   useEffect(() => {
     if (!depth || isLoading || pendingSession) return;
@@ -454,7 +506,7 @@ const FileExplorer = () => {
   }, [searchParams]);
 
   /* ---------------------------------------------------------------
-     Aplicar sesión restaurada (respeta la profundidad de la URL)
+     Aplicar sesión restaurada
      --------------------------------------------------------------- */
   const applyRestoredSession = async (session) => {
     const { stack } = session;
@@ -472,7 +524,7 @@ const FileExplorer = () => {
   };
 
   /* ---------------------------------------------------------------
-     Restaurar sesión al montar (persistencia de directorio)
+     Restaurar sesión al montar
      --------------------------------------------------------------- */
   useEffect(() => {
     let cancelled = false;
@@ -517,7 +569,6 @@ const FileExplorer = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Guardar sesión cada vez que cambia la navegación
   useEffect(() => {
     if (depth > 0 && dirStack.length > 0) {
       saveSession({ stack: dirStack, depth });
@@ -525,7 +576,7 @@ const FileExplorer = () => {
   }, [dirStack, depth]);
 
   /* ---------------------------------------------------------------
-     Re-autorizar sesión pendiente (requiere gesto del usuario)
+     Re-autorizar sesión pendiente
      --------------------------------------------------------------- */
   const restorePendingSession = async () => {
     if (!pendingSession) return;
@@ -556,7 +607,7 @@ const FileExplorer = () => {
   };
 
   /* ---------------------------------------------------------------
-     Seleccionar nuevo directorio (modo readwrite para poder borrar)
+     Seleccionar nuevo directorio
      --------------------------------------------------------------- */
   const selectDirectory = async () => {
     if (!('showDirectoryPicker' in window)) {
@@ -579,7 +630,7 @@ const FileExplorer = () => {
   };
 
   /* ---------------------------------------------------------------
-     Navegación (actualiza stack + URL con push para historial)
+     Navegación
      --------------------------------------------------------------- */
   const navigateToDirectory = async (metadata) => {
     const newStack = [...dirStack.slice(0, depth), { name: metadata.name, handle: metadata.handle }];
@@ -613,19 +664,15 @@ const FileExplorer = () => {
   };
 
   /* ---------------------------------------------------------------
-     ✅ PUNTO 1 y 2 — Eliminación con animación
+     Eliminación con animación
      --------------------------------------------------------------- */
   const performDelete = async (entry) => {
     const parentHandle = currentDir?.handle;
     if (!parentHandle || removingFiles.has(entry.name)) return;
 
-    // 1) Disparar animación de salida
     setRemovingFiles((prev) => new Set(prev).add(entry.name));
-
-    // 2) Esperar a que la animación termine
     await new Promise((r) => setTimeout(r, 320));
 
-    // 3) Eliminar del sistema de archivos y del estado
     try {
       if (!parentHandle.removeEntry) {
         throw new Error('El navegador no soporta eliminación de archivos.');
@@ -651,11 +698,10 @@ const FileExplorer = () => {
     }
   };
 
-  // Click en un elemento: carpeta → navegar, ._ → borrar directo, archivo → visor
   const handleFileClick = (entry) => {
     if (removingFiles.has(entry.name)) return;
     if (entry.kind === 'directory') return navigateToDirectory(entry);
-    if (isJunkFile(entry.name)) return performDelete(entry); // ✅ Punto 1
+    if (isJunkFile(entry.name)) return performDelete(entry);
     setViewerEntry(entry);
   };
 
@@ -675,16 +721,28 @@ const FileExplorer = () => {
   };
 
   /* ================================================================
+     ✅ NUEVO: Clases base para archivos ocultos (estilo gris)
+     ================================================================ */
+  const hiddenClasses = (file, removing) => {
+    const hidden = isHiddenFile(file.name);
+    const junk = isJunkFile(file.name);
+    if (!hidden) return '';
+    if (removing) return '';
+    if (junk) return 'opacity-40 grayscale border-dashed border-slate-600/40';
+    return 'opacity-40 grayscale border-dashed border-slate-600/30';
+  };
+
+  /* ================================================================
      RENDER HELPERS
      ================================================================ */
 
-  // Tarjeta compacta (usada en grid y para items no-imagen en masonry)
   const renderItemCard = (file) => {
     const fileType = getFileType(file.name);
     const IconComponent = getFileIcon(fileType.type);
     const imageUrl = imagePreviews[file.name];
     const isImage = fileType.type === 'image';
     const junk = isJunkFile(file.name);
+    const hidden = isHiddenFile(file.name);
     const removing = removingFiles.has(file.name);
     const showX = file.kind === 'file' && !junk;
 
@@ -694,12 +752,14 @@ const FileExplorer = () => {
         tabIndex={0}
         onClick={() => handleFileClick(file)}
         onKeyDown={(e) => onCardKey(e, file)}
-        title={junk ? 'Archivo basura de macOS — click para eliminarlo' : undefined}
+        title={junk ? 'Archivo basura de macOS — click para eliminarlo' : hidden ? 'Archivo oculto' : undefined}
         className={`relative group bg-slate-800/50 border rounded-xl p-4 text-left cursor-pointer select-none transition-all duration-300 ${
           removing
             ? 'opacity-0 scale-90 pointer-events-none border-slate-700/50'
             : junk
-            ? 'opacity-60 border-slate-700/30 hover:opacity-100 hover:border-red-500/50'
+            ? 'opacity-40 border-dashed border-slate-600/40 hover:opacity-70 hover:border-red-500/40'
+            : hidden
+            ? 'opacity-40 border-dashed border-slate-600/30 hover:opacity-70'
             : 'opacity-100 border-slate-700/50 hover:bg-slate-700/50'
         }`}
       >
@@ -708,7 +768,7 @@ const FileExplorer = () => {
         )}
 
         <div className="flex items-center gap-3">
-          {isImage && imageUrl ? (
+          {isImage && imageUrl && !hidden ? (
             <img
               src={imageUrl}
               alt={file.name}
@@ -716,16 +776,31 @@ const FileExplorer = () => {
               loading="lazy"
             />
           ) : (
-            IconComponent
+            <span className={hidden ? 'opacity-50 grayscale' : ''}>
+              {IconComponent}
+            </span>
           )}
           <div className="flex-1 min-w-0">
-            <p className={`font-medium truncate transition-colors ${junk ? 'text-slate-400 line-through' : 'text-white group-hover:text-indigo-400'}`}>
+            <p className={`font-medium truncate transition-colors ${
+              junk
+                ? 'text-slate-600 line-through'
+                : hidden
+                ? 'text-slate-500'
+                : 'text-white group-hover:text-indigo-400'
+            }`}>
               {file.name}
             </p>
-            <p className={`text-xs truncate ${junk ? 'text-red-400/80' : 'text-slate-500'}`}>
+            <p className={`text-xs truncate flex items-center gap-1.5 ${
+              junk ? 'text-red-400/70' : hidden ? 'text-slate-600' : 'text-slate-500'
+            }`}>
               {junk
-                ? 'Basura de macOS · click para eliminar'
+                ? 'Basura · click para eliminar'
                 : `${fileType.name}${file.file ? ` · ${formatFileSize(file.file.size)}` : ''}`}
+              {hidden && !junk && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-700/50 text-slate-500 border border-slate-600/30">
+                  oculto
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -733,14 +808,15 @@ const FileExplorer = () => {
     );
   };
 
-  // ✅ Vista MASONRY
+  // Vista MASONRY
   const renderMasonry = () => (
     <div className="columns-1 sm:columns-2 xl:columns-3 2xl:columns-4 gap-4">
-      {files.map((file) => {
+      {filteredFiles.map((file) => {
         const fileType = getFileType(file.name);
         const imageUrl = imagePreviews[file.name];
         const isImage = fileType.type === 'image';
         const removing = removingFiles.has(file.name);
+        const hidden = isHiddenFile(file.name);
 
         if (!isImage || !imageUrl) {
           return (
@@ -757,8 +833,12 @@ const FileExplorer = () => {
               tabIndex={0}
               onClick={() => handleFileClick(file)}
               onKeyDown={(e) => onCardKey(e, file)}
-              className={`relative group rounded-xl overflow-hidden border border-slate-700/50 cursor-pointer transition-all duration-300 ${
-                removing ? 'opacity-0 scale-95 pointer-events-none' : 'hover:border-indigo-500/60'
+              className={`relative group rounded-xl overflow-hidden border cursor-pointer transition-all duration-300 ${
+                removing
+                  ? 'opacity-0 scale-95 pointer-events-none border-slate-700/50'
+                  : hidden
+                  ? 'opacity-40 grayscale border-dashed border-slate-600/30 hover:opacity-70'
+                  : 'border-slate-700/50 hover:border-indigo-500/60'
               }`}
             >
               <img
@@ -769,7 +849,10 @@ const FileExplorer = () => {
               />
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                 <p className="text-white text-sm font-medium truncate">{file.name}</p>
-                <p className="text-slate-400 text-xs">{fileType.name}</p>
+                <p className="text-slate-400 text-xs">
+                  {fileType.name}
+                  {hidden && <span className="ml-1 text-slate-500">· oculto</span>}
+                </p>
               </div>
               <DeleteXButton onClick={(e) => onDeleteClick(e, file)} className="absolute top-2 right-2" />
             </div>
@@ -779,16 +862,16 @@ const FileExplorer = () => {
     </div>
   );
 
-  // ✅ Vista GRID (original)
+  // Vista GRID
   const renderGrid = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      {files.map((file) => (
+      {filteredFiles.map((file) => (
         <div key={file.name}>{renderItemCard(file)}</div>
       ))}
     </div>
   );
 
-  // ✅ Vista LISTA
+  // Vista LISTA
   const renderList = () => (
     <div className="space-y-1">
       <div className="grid grid-cols-[auto_1fr_110px_90px_40px] gap-3 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-700/50">
@@ -799,12 +882,13 @@ const FileExplorer = () => {
         <span></span>
       </div>
 
-      {files.map((file) => {
+      {filteredFiles.map((file) => {
         const fileType = getFileType(file.name);
         const IconComponent = getFileIcon(fileType.type);
         const imageUrl = imagePreviews[file.name];
         const isImage = fileType.type === 'image';
         const junk = isJunkFile(file.name);
+        const hidden = isHiddenFile(file.name);
         const removing = removingFiles.has(file.name);
         const showX = file.kind === 'file' && !junk;
 
@@ -816,11 +900,17 @@ const FileExplorer = () => {
             onClick={() => handleFileClick(file)}
             onKeyDown={(e) => onCardKey(e, file)}
             className={`group grid grid-cols-[auto_1fr_110px_90px_40px] gap-3 px-4 py-2.5 rounded-lg cursor-pointer select-none items-center transition-all duration-300 ${
-              removing ? 'opacity-0 scale-95 pointer-events-none' : 'hover:bg-slate-800/60'
+              removing
+                ? 'opacity-0 scale-95 pointer-events-none'
+                : junk
+                ? 'opacity-40 hover:opacity-70'
+                : hidden
+                ? 'opacity-40 hover:opacity-70'
+                : 'hover:bg-slate-800/60'
             }`}
           >
             <span className="w-8 flex justify-center">
-              {isImage && imageUrl ? (
+              {isImage && imageUrl && !hidden ? (
                 <img
                   src={imageUrl}
                   alt={file.name}
@@ -828,16 +918,31 @@ const FileExplorer = () => {
                   loading="lazy"
                 />
               ) : (
-                IconComponent
+                <span className={hidden ? 'opacity-50 grayscale' : ''}>
+                  {IconComponent}
+                </span>
               )}
             </span>
-            <span className={`font-medium truncate transition-colors ${junk ? 'text-slate-500 line-through' : 'text-white group-hover:text-indigo-400'}`}>
+            <span className={`font-medium truncate transition-colors flex items-center gap-1.5 ${
+              junk
+                ? 'text-slate-600 line-through'
+                : hidden
+                ? 'text-slate-500'
+                : 'text-white group-hover:text-indigo-400'
+            }`}>
               {file.name}
+              {hidden && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-700/50 text-slate-500 border border-slate-600/30 shrink-0">
+                  oculto
+                </span>
+              )}
             </span>
-            <span className={`text-sm truncate ${junk ? 'text-red-400/80 font-medium' : 'text-slate-500'}`}>
+            <span className={`text-sm truncate ${
+              junk ? 'text-red-400/70 font-medium' : hidden ? 'text-slate-600' : 'text-slate-500'
+            }`}>
               {junk ? 'Basura' : fileType.name}
             </span>
-            <span className="text-slate-500 text-sm text-right">
+            <span className={`text-sm text-right ${hidden ? 'text-slate-600' : 'text-slate-500'}`}>
               {file.kind === 'directory' ? '—' : formatFileSize(file.file?.size)}
             </span>
             <span className="justify-self-end">
@@ -950,39 +1055,61 @@ const FileExplorer = () => {
         </div>
       )}
 
-      {/* Contenido + toggle de vistas */}
+      {/* Contenido + toolbar */}
       {!isLoading && currentDir && files.length > 0 && (
         <>
-          <div className="px-6 pt-4 flex items-center justify-between gap-3 flex-wrap">
-            <p className="text-slate-500 text-sm">
-              {files.length} elemento{files.length !== 1 && 's'}
-              <span className="text-slate-600 ml-2 hidden sm:inline">
-                · click en archivos <span className="font-mono">._</span> para eliminarlos
-              </span>
-            </p>
-            <div className="flex bg-slate-800/60 rounded-lg p-1 border border-slate-700/50">
-              {[
-                { key: 'masonry', label: 'Masonry', icon: <path d="M3 3h8v10H3zM13 3h8v6h-8zM13 11h8v10h-8zM3 15h8v6H3z" /> },
-                { key: 'grid', label: 'Grid', icon: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></> },
-                { key: 'list', label: 'Lista', icon: <><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></> },
-              ].map((mode) => (
-                <button
-                  key={mode.key}
-                  onClick={() => setViewMode(mode.key)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                    viewMode === mode.key
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-                  }`}
-                  aria-label={`Vista ${mode.label}`}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                    {mode.icon}
-                  </svg>
-                  {mode.label}
-                </button>
-              ))}
+          <div className="px-6 pt-4 flex flex-col gap-3">
+            {/* Fila 1: contador + toggle de ocultos + toggle de vistas */}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-4">
+                <p className="text-slate-500 text-sm">
+                  {filteredFiles.length} elemento{filteredFiles.length !== 1 && 's'}
+                  {!showHiddenFiles && hiddenCount > 0 && (
+                    <span className="text-slate-600 ml-1">
+                      ({hiddenCount} oculto{hiddenCount !== 1 && 's'})
+                    </span>
+                  )}
+                </p>
+
+                {/* ✅ NUEVO: Interruptor de archivos ocultos */}
+                <ToggleSwitch
+                  checked={showHiddenFiles}
+                  onChange={() => setShowHiddenFiles((v) => !v)}
+                  label="Ocultos"
+                />
+              </div>
+
+              <div className="flex bg-slate-800/60 rounded-lg p-1 border border-slate-700/50">
+                {[
+                  { key: 'masonry', label: 'Masonry', icon: <path d="M3 3h8v10H3zM13 3h8v6h-8zM13 11h8v10h-8zM3 15h8v6H3z" /> },
+                  { key: 'grid', label: 'Grid', icon: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></> },
+                  { key: 'list', label: 'Lista', icon: <><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></> },
+                ].map((mode) => (
+                  <button
+                    key={mode.key}
+                    onClick={() => setViewMode(mode.key)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                      viewMode === mode.key
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                    }`}
+                    aria-label={`Vista ${mode.label}`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                      {mode.icon}
+                    </svg>
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Fila 2: hint de archivos basura */}
+            {showHiddenFiles && files.some((f) => isJunkFile(f.name)) && (
+              <p className="text-slate-600 text-xs">
+                💡 Click en archivos <span className="font-mono text-red-400/70">._*</span> para eliminarlos directamente
+              </p>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
@@ -1004,6 +1131,30 @@ const FileExplorer = () => {
             </svg>
             <h3 className="text-xl font-medium text-slate-400 mb-2">Directorio vacío</h3>
             <p className="text-slate-500 max-w-xs mx-auto">Este directorio no contiene archivos o subcarpetas</p>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ NUEVO: Directorio con archivos pero todos ocultos */}
+      {!isLoading && currentDir && files.length > 0 && filteredFiles.length === 0 && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-16 h-16 text-slate-700 mx-auto mb-3" aria-label="Archivos ocultos">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg>
+            <h3 className="text-xl font-medium text-slate-400 mb-2">Solo hay archivos ocultos</h3>
+            <p className="text-slate-500 max-w-xs mx-auto mb-4">
+              Este directorio contiene {files.length} archivo{files.length !== 1 && 's'} oculto{files.length !== 1 && 's'}
+            </p>
+            <button
+              onClick={() => setShowHiddenFiles(true)}
+              className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              Mostrar archivos ocultos
+            </button>
           </div>
         </div>
       )}
