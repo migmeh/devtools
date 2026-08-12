@@ -209,6 +209,280 @@ const ToggleSwitch = ({ checked, onChange, label }) => (
 );
 
 /* ================================================================
+   REPRODUCTOR DE VIDEO PERSONALIZADO (estilo Vimeo)
+   ================================================================ */
+const formatTime = (sec) => {
+  if (!Number.isFinite(sec) || sec < 0) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
+const CustomVideoPlayer = ({ src }) => {
+  const videoRef = useRef(null);
+  const progressRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [buffered, setBuffered] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const [hovering, setHovering] = useState(false);
+  const [seeking, setSeeking] = useState(false);
+  const hideTimer = useRef(null);
+
+  const showControls = hovering || !playing || seeking;
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    const onTime = () => {
+      if (!seeking) setCurrent(v.currentTime);
+    };
+    const onMeta = () => setDuration(v.duration || 0);
+    const onProgress = () => {
+      if (v.buffered.length > 0) {
+        setBuffered(v.buffered.end(v.buffered.length - 1));
+      }
+    };
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onEnded = () => setPlaying(false);
+
+    v.addEventListener('timeupdate', onTime);
+    v.addEventListener('loadedmetadata', onMeta);
+    v.addEventListener('progress', onProgress);
+    v.addEventListener('play', onPlay);
+    v.addEventListener('pause', onPause);
+    v.addEventListener('ended', onEnded);
+
+    // Autoplay
+    v.play().catch(() => {});
+
+    return () => {
+      v.removeEventListener('timeupdate', onTime);
+      v.removeEventListener('loadedmetadata', onMeta);
+      v.removeEventListener('progress', onProgress);
+      v.removeEventListener('play', onPlay);
+      v.removeEventListener('pause', onPause);
+      v.removeEventListener('ended', onEnded);
+    };
+  }, [src, seeking]);
+
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) v.play().catch(() => {});
+    else v.pause();
+  };
+
+  const seekTo = (clientX) => {
+    const bar = progressRef.current;
+    const v = videoRef.current;
+    if (!bar || !v || !duration) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    v.currentTime = ratio * duration;
+    setCurrent(v.currentTime);
+  };
+
+  const onProgressDown = (e) => {
+    setSeeking(true);
+    seekTo(e.clientX);
+    const onMove = (ev) => seekTo(ev.clientX);
+    const onUp = () => {
+      setSeeking(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const toggleMute = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = !v.muted;
+    setMuted(v.muted);
+  };
+
+  const changeVolume = (e) => {
+    const v = videoRef.current;
+    if (!v) return;
+    const val = parseFloat(e.target.value);
+    v.volume = val;
+    setVolume(val);
+    setMuted(val === 0);
+    v.muted = val === 0;
+  };
+
+  const toggleFullscreen = () => {
+    const wrap = videoRef.current?.parentElement;
+    if (!wrap) return;
+    if (document.fullscreenElement) document.exitFullscreen();
+    else wrap.requestFullscreen?.();
+  };
+
+  const onMouseMove = () => {
+    setHovering(true);
+    clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setHovering(false), 2500);
+  };
+
+  const pct = duration ? (current / duration) * 100 : 0;
+  const bufPct = duration ? (buffered / duration) * 100 : 0;
+
+  return (
+    <div
+      className="relative w-full bg-black rounded-xl overflow-hidden select-none group/player"
+      style={{ aspectRatio: '16/9', maxHeight: '65vh' }}
+      onMouseMove={onMouseMove}
+      onMouseLeave={() => {
+        setHovering(false);
+        clearTimeout(hideTimer.current);
+      }}
+      onDoubleClick={toggleFullscreen}
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        playsInline
+        className="w-full h-full object-contain bg-black block cursor-pointer"
+        onClick={togglePlay}
+      />
+
+      {/* Gradiente inferior estilo Vimeo */}
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity duration-300 ${
+          showControls ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+
+      {/* Botón play grande al centro (cuando pausado) */}
+      {!playing && (
+        <button
+          type="button"
+          onClick={togglePlay}
+          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-white/95 hover:bg-white text-slate-900 shadow-2xl flex items-center justify-center transition-transform hover:scale-105 z-10"
+          aria-label="Reproducir"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 ml-0.5">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </button>
+      )}
+
+      {/* Controles inferiores */}
+      <div
+        className={`absolute inset-x-0 bottom-0 z-20 px-3 sm:px-4 pb-3 pt-8 transition-opacity duration-300 ${
+          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        {/* Barra de progreso */}
+        <div
+          ref={progressRef}
+          className="group/bar relative h-1.5 mb-3 cursor-pointer rounded-full bg-white/25 hover:h-2 transition-all"
+          onMouseDown={onProgressDown}
+        >
+          {/* Buffer */}
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-white/30"
+            style={{ width: `${bufPct}%` }}
+          />
+          {/* Progreso (cyan estilo Vimeo/DevTools) */}
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-cyan-400"
+            style={{ width: `${pct}%` }}
+          />
+          {/* Thumb */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md opacity-0 group-hover/bar:opacity-100 transition-opacity"
+            style={{ left: `calc(${pct}% - 7px)` }}
+          />
+        </div>
+
+        {/* Fila de botones */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Play / Pause */}
+          <button
+            type="button"
+            onClick={togglePlay}
+            className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-colors"
+            aria-label={playing ? 'Pausar' : 'Reproducir'}
+          >
+            {playing ? (
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                <rect x="6" y="4" width="4" height="16" rx="1" />
+                <rect x="14" y="4" width="4" height="16" rx="1" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 ml-0.5">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Tiempo */}
+          <span className="text-white text-xs font-medium tabular-nums min-w-[70px]">
+            {formatTime(current)} <span className="text-white/50">/</span> {formatTime(duration)}
+          </span>
+
+          <div className="flex-1" />
+
+          {/* Volumen */}
+          <div className="hidden sm:flex items-center gap-1.5 group/vol">
+            <button
+              type="button"
+              onClick={toggleMute}
+              className="w-8 h-8 rounded-full hover:bg-white/15 text-white flex items-center justify-center transition-colors"
+              aria-label={muted ? 'Activar sonido' : 'Silenciar'}
+            >
+              {muted || volume === 0 ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <line x1="23" y1="9" x2="17" y2="15" />
+                  <line x1="17" y1="9" x2="23" y2="15" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+                </svg>
+              )}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={muted ? 0 : volume}
+              onChange={changeVolume}
+              className="w-20 h-1 accent-cyan-400 cursor-pointer opacity-70 group-hover/vol:opacity-100 transition-opacity"
+            />
+          </div>
+
+          {/* Fullscreen */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="w-8 h-8 rounded-full hover:bg-white/15 text-white flex items-center justify-center transition-colors"
+            aria-label="Pantalla completa"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+              <polyline points="15 3 21 3 21 9" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="21" y1="3" x2="14" y2="10" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ================================================================
    VISOR DE ARCHIVOS (con edición de nombre y contenido)
    ================================================================ */
 const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle }) => {
