@@ -685,64 +685,10 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle })
             <img src={mediaUrl} alt={entry.name} className="max-w-full max-h-[70vh] object-contain" />
           )}
 
-          {/* Video player — diseño premium */}
+          {/* Video player estilo Vimeo (controles custom) */}
           {!error && fileType.type === 'video' && mediaUrl && (
-            <div className="w-full max-w-4xl p-4 sm:p-6 flex flex-col items-center">
-              {/* Card contenedor */}
-              <div className="w-full rounded-2xl overflow-hidden border border-slate-700/70 bg-slate-900/80 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] ring-1 ring-white/5">
-                {/* Barra superior de info */}
-                <div className="flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-r from-slate-800/90 to-slate-900/90 border-b border-slate-700/50">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/25 to-rose-600/15 border border-red-500/30 flex items-center justify-center shrink-0">
-                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-red-400">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-white text-sm font-medium truncate">{entry.name}</p>
-                      <p className="text-slate-500 text-xs">
-                        {fileType.name}
-                        {meta && ` · ${formatFileSize(meta.size)}`}
-                        {meta?.mime && ` · ${meta.mime}`}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-md bg-red-500/15 text-red-400 text-[11px] font-semibold border border-red-500/25 tracking-wide uppercase">
-                    Video
-                  </span>
-                </div>
-
-                {/* Área del video */}
-                <div className="relative bg-black group/video">
-                  <video
-                    src={mediaUrl}
-                    controls
-                    autoPlay
-                    playsInline
-                    className="w-full max-h-[60vh] block bg-black outline-none"
-                    style={{ aspectRatio: '16/9' }}
-                  />
-                  {/* Sutil viñeta en los bordes */}
-                  <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_80px_rgba(0,0,0,0.35)]" />
-                </div>
-
-                {/* Barra inferior decorativa */}
-                <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900/95 border-t border-slate-800/80">
-                  <div className="flex items-center gap-2 text-slate-500 text-xs">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Reproduciendo
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-slate-600 text-[11px]">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
-                      <rect x="2" y="4" width="20" height="16" rx="2" />
-                      <path d="M10 9l5 3-5 3V9z" />
-                    </svg>
-                    Controles nativos del navegador
-                  </div>
-                </div>
-              </div>
+            <div className="w-full max-w-4xl p-4 sm:p-6 flex items-center justify-center">
+              <CustomVideoPlayer src={mediaUrl} />
             </div>
           )}
 
