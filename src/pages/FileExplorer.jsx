@@ -908,8 +908,15 @@ const FileExplorer = () => {
 
     try {
       const entries = [];
-      // Mapa: nombre del video → File del GIF .myvideo_*
+      // Mapa: clave en minúsculas → File del GIF .myvideo_*
+      // Acepta: .myvideo_clip.mp4.gif | .myvideo_clip.mkv.gif | .myvideo_clip.gif
       const customThumbFiles = new Map();
+
+      const addThumbKey = (key, file) => {
+        if (!key) return;
+        const k = key.normalize('NFC').toLowerCase();
+        customThumbFiles.set(k, file);
+      };
 
       for await (const [name, handle] of dirHandle.entries()) {
         const metadata = {
@@ -923,16 +930,23 @@ const FileExplorer = () => {
           try {
             metadata.file = await handle.getFile();
 
-            // Detectar miniaturas custom: .myvideo_<nombredelvideo>.gif
-            // Ej: video "clip.mp4" → ".myvideo_clip.mp4.gif" o ".myvideo_clip.gif"
+            // .myvideo_<nombredelvideo>.gif  (case-insensitive)
             const myvideoMatch = name.match(/^\.myvideo_(.+)\.gif$/i);
             if (myvideoMatch) {
-              const videoKey = myvideoMatch[1]; // nombre completo o sin extensión
-              customThumbFiles.set(videoKey, metadata.file);
-              // También indexar por nombre base sin extensión
+              const videoKey = myvideoMatch[1].normalize('NFC');
+              // Nombre completo (p.ej. "clip.mkv")
+              addThumbKey(videoKey, metadata.file);
+              // Sin la última extensión (p.ej. "clip" desde "clip.mkv")
               const base = videoKey.replace(/\.[^.]+$/, '');
-              if (base && base !== videoKey) {
-                customThumbFiles.set(base, metadata.file);
+              if (base && base !== videoKey) addThumbKey(base, metadata.file);
+              // Si el key aún tiene extensión de video (clip.mkv), ya cubierto;
+              // también indexar quitando extensiones de video conocidas de forma explícita
+              const withoutVideoExt = videoKey.replace(
+                /\.(mp4|mov|webm|mkv|avi|m4v|mpg|mpeg)$/i,
+                ''
+              );
+              if (withoutVideoExt && withoutVideoExt !== videoKey) {
+                addThumbKey(withoutVideoExt, metadata.file);
               }
             }
           } catch {
@@ -947,35 +961,44 @@ const FileExplorer = () => {
         return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
       });
 
-      // Previews de imágenes + GIFs custom asociados a videos
       const newPreviews = {};
       for (const entry of entries) {
         const ft = getFileType(entry.name);
-        if (ft.type === 'image' && entry.file && !entry.name.match(/^\.myvideo_/i)) {
-          // No mostrar .myvideo_*.gif como imagen normal en la lista de previews de imagen
-          // (siguen siendo archivos ocultos; solo se usan como thumb de video)
+        if (ft.type === 'image' && entry.file && !/^\.myvideo_/i.test(entry.name)) {
           newPreviews[entry.name] = URL.createObjectURL(entry.file);
         }
       }
 
-      // Asignar thumbs a videos: preferir .myvideo_*, si no generar
+      // Resolver miniatura custom para cada video (mp4, mkv, etc.)
+      const resolveCustomThumb = (videoName) => {
+        const n = videoName.normalize('NFC');
+        const lower = n.toLowerCase();
+        const base = lower.replace(/\.[^.]+$/, '');
+        const withoutVideoExt = lower.replace(
+          /\.(mp4|mov|webm|mkv|avi|m4v|mpg|mpeg)$/i,
+          ''
+        );
+        return (
+          customThumbFiles.get(lower) ||
+          customThumbFiles.get(base) ||
+          customThumbFiles.get(withoutVideoExt) ||
+          null
+        );
+      };
+
       for (const entry of entries) {
         if (entry.kind !== 'file') continue;
         const ft = getFileType(entry.name);
         if (ft.type !== 'video' || !entry.file) continue;
 
-        const baseName = entry.name.replace(/\.[^.]+$/, '');
-        const customFile =
-          customThumbFiles.get(entry.name) ||
-          customThumbFiles.get(baseName);
+        const customFile = resolveCustomThumb(entry.name);
 
         if (customFile) {
           const url = URL.createObjectURL(customFile);
-          // Guardamos bajo el nombre del VIDEO para que previewUrl lo encuentre
           newPreviews[entry.name] = url;
           entry.thumbnail = url;
         } else {
-          // Fallback: generar frame del video
+          // Fallback: frame del video (mkv a menudo falla en <video>/canvas)
           generateVideoThumbnail(entry.file).then((thumb) => {
             if (thumb) {
               setFiles((prev) =>
