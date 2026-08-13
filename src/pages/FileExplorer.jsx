@@ -900,34 +900,40 @@ const FileExplorer = () => {
     setErrorMessage(null);
 
     setImagePreviews((prev) => {
-      Object.values(prev).forEach((url) => URL.revokeObjectURL(url));
+      Object.values(prev).forEach((url) => {
+        if (typeof url === 'string' && url.startsWith('blob:')) URL.revokeObjectURL(url);
+      });
       return {};
     });
 
     try {
       const entries = [];
+      // Mapa: nombre del video → File del GIF .myvideo_*
+      const customThumbFiles = new Map();
+
       for await (const [name, handle] of dirHandle.entries()) {
         const metadata = {
           name: handle.kind === 'directory' ? `${name}/` : name,
           handle,
           kind: handle.kind,
-          thumbnail: null, // Nuevo campo
+          thumbnail: null,
         };
+
         if (handle.kind === 'file') {
           try {
             metadata.file = await handle.getFile();
-            const fileType = getFileType(name);
-            if (fileType.type === 'video') {
-              // Genera la miniatura de forma asíncrona sin bloquear
-              generateVideoThumbnail(metadata.file).then((thumb) => {
-                if (thumb) {
-                  setFiles((prev) =>
-                    prev.map((f) =>
-                      f.name === metadata.name ? { ...f, thumbnail: thumb } : f
-                    )
-                  );
-                }
-              });
+
+            // Detectar miniaturas custom: .myvideo_<nombredelvideo>.gif
+            // Ej: video "clip.mp4" → ".myvideo_clip.mp4.gif" o ".myvideo_clip.gif"
+            const myvideoMatch = name.match(/^\.myvideo_(.+)\.gif$/i);
+            if (myvideoMatch) {
+              const videoKey = myvideoMatch[1]; // nombre completo o sin extensión
+              customThumbFiles.set(videoKey, metadata.file);
+              // También indexar por nombre base sin extensión
+              const base = videoKey.replace(/\.[^.]+$/, '');
+              if (base && base !== videoKey) {
+                customThumbFiles.set(base, metadata.file);
+              }
             }
           } catch {
             // archivo individual ilegible, se ignora
@@ -941,15 +947,48 @@ const FileExplorer = () => {
         return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
       });
 
-      setFiles(entries);
-
+      // Previews de imágenes + GIFs custom asociados a videos
       const newPreviews = {};
       for (const entry of entries) {
         const ft = getFileType(entry.name);
-        if (ft.type === 'image' && entry.file) {
+        if (ft.type === 'image' && entry.file && !entry.name.match(/^\.myvideo_/i)) {
+          // No mostrar .myvideo_*.gif como imagen normal en la lista de previews de imagen
+          // (siguen siendo archivos ocultos; solo se usan como thumb de video)
           newPreviews[entry.name] = URL.createObjectURL(entry.file);
         }
       }
+
+      // Asignar thumbs a videos: preferir .myvideo_*, si no generar
+      for (const entry of entries) {
+        if (entry.kind !== 'file') continue;
+        const ft = getFileType(entry.name);
+        if (ft.type !== 'video' || !entry.file) continue;
+
+        const baseName = entry.name.replace(/\.[^.]+$/, '');
+        const customFile =
+          customThumbFiles.get(entry.name) ||
+          customThumbFiles.get(baseName);
+
+        if (customFile) {
+          const url = URL.createObjectURL(customFile);
+          // Guardamos bajo el nombre del VIDEO para que previewUrl lo encuentre
+          newPreviews[entry.name] = url;
+          entry.thumbnail = url;
+        } else {
+          // Fallback: generar frame del video
+          generateVideoThumbnail(entry.file).then((thumb) => {
+            if (thumb) {
+              setFiles((prev) =>
+                prev.map((f) =>
+                  f.name === entry.name ? { ...f, thumbnail: thumb } : f
+                )
+              );
+            }
+          });
+        }
+      }
+
+      setFiles(entries);
       setImagePreviews(newPreviews);
     } catch (error) {
       setErrorMessage(`Error al cargar archivos: ${error.message}`);
@@ -1356,7 +1395,12 @@ const renderItemCard = (file) => {
 
   const isImage = fileType.type === 'image';
   const isVideo = fileType.type === 'video';
-  const previewUrl = isImage ? imagePreviews[file.name] : isVideo ? file.thumbnail : null;
+  // Preferir preview de imagePreviews (incluye .myvideo_*.gif asociados al video)
+  const previewUrl = isImage
+    ? imagePreviews[file.name]
+    : isVideo
+    ? imagePreviews[file.name] || file.thumbnail
+    : null;
 
   const junk = isJunkFile(file.name);
   const hidden = isHiddenFile(file.name);
@@ -1385,7 +1429,7 @@ const renderItemCard = (file) => {
       )}
 
       <div className="flex items-center gap-3">
-        {/* Previsualización: Imagen o Miniatura de Video */}
+        {/* Previsualización: Imagen o Miniatura de Video (custom .myvideo_ o generada) */}
         {previewUrl && !hidden ? (
           <div className="relative w-12 h-12 shrink-0">
             <img
@@ -1393,6 +1437,7 @@ const renderItemCard = (file) => {
               alt={file.name}
               className="w-12 h-12 rounded-lg object-cover border border-slate-600/40"
               loading="lazy"
+              decoding="async"
             />
             {isVideo && (
               <div className="absolute bottom-1 right-1 bg-black/80 rounded p-0.5 backdrop-blur-xs">
@@ -1440,12 +1485,19 @@ const renderItemCard = (file) => {
     <div className="columns-1 sm:columns-2 xl:columns-3 2xl:columns-4 gap-4">
       {filteredFiles.map((file) => {
         const fileType = getFileType(file.name);
-        const imageUrl = imagePreviews[file.name];
         const isImage = fileType.type === 'image';
+        const isVideo = fileType.type === 'video';
+        // Imagen normal o video con miniatura (custom .myvideo_ gif o generada)
+        const previewUrl = isImage
+          ? imagePreviews[file.name]
+          : isVideo
+          ? imagePreviews[file.name] || file.thumbnail
+          : null;
         const removing = removingFiles.has(file.name);
         const hidden = isHiddenFile(file.name);
+        const showLarge = Boolean(previewUrl) && (isImage || isVideo);
 
-        if (!isImage || !imageUrl) {
+        if (!showLarge) {
           return (
             <div key={file.name} className="break-inside-avoid mb-4">
               {renderItemCard(file)}
@@ -1469,11 +1521,22 @@ const renderItemCard = (file) => {
               }`}
             >
               <img
-                src={imageUrl}
+                src={previewUrl}
                 alt={file.name}
                 className="w-full h-auto block group-hover:scale-[1.02] transition-transform duration-300"
                 loading="lazy"
+                decoding="async"
               />
+              {isVideo && (
+                <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-md bg-black/70 backdrop-blur-sm border border-white/10">
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 text-white">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  <span className="text-[10px] font-semibold text-white/90 uppercase tracking-wide">
+                    {fileType.name}
+                  </span>
+                </div>
+              )}
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                 <p className="text-white text-sm font-medium truncate">{file.name}</p>
                 <p className="text-slate-400 text-xs">
@@ -1512,8 +1575,13 @@ const renderItemCard = (file) => {
       {filteredFiles.map((file) => {
         const fileType = getFileType(file.name);
         const IconComponent = getFileIcon(fileType.type);
-        const imageUrl = imagePreviews[file.name];
         const isImage = fileType.type === 'image';
+        const isVideo = fileType.type === 'video';
+        const previewUrl = isImage
+          ? imagePreviews[file.name]
+          : isVideo
+          ? imagePreviews[file.name] || file.thumbnail
+          : null;
         const junk = isJunkFile(file.name);
         const hidden = isHiddenFile(file.name);
         const removing = removingFiles.has(file.name);
@@ -1537,13 +1605,23 @@ const renderItemCard = (file) => {
             }`}
           >
             <span className="w-8 flex justify-center">
-              {isImage && imageUrl && !hidden ? (
-                <img
-                  src={imageUrl}
-                  alt={file.name}
-                  className="w-8 h-8 rounded object-cover border border-slate-600/50"
-                  loading="lazy"
-                />
+              {previewUrl && !hidden ? (
+                <div className="relative w-8 h-8">
+                  <img
+                    src={previewUrl}
+                    alt={file.name}
+                    className="w-8 h-8 rounded object-cover border border-slate-600/50"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  {isVideo && (
+                    <div className="absolute bottom-0 right-0 bg-black/80 rounded-sm p-px">
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-2 h-2 text-white">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <span className={hidden ? 'opacity-50 grayscale' : ''}>
                   {IconComponent}
