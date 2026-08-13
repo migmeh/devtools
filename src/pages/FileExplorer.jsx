@@ -908,15 +908,19 @@ const FileExplorer = () => {
 
     try {
       const entries = [];
-      // Mapa: clave en minúsculas → File del GIF .myvideo_*
-      // Acepta: .myvideo_clip.mp4.gif | .myvideo_clip.mkv.gif | .myvideo_clip.gif
-      const customThumbFiles = new Map();
+      // Lista de GIFs .myvideo_* (o myvideo_* sin punto) para asociar a videos
+      // Formato: .myvideo_<nombredelvideo>.gif
+      const customThumbs = []; // { file, keys: string[], fuzzy: string }
 
-      const addThumbKey = (key, file) => {
-        if (!key) return;
-        const k = key.normalize('NFC').toLowerCase();
-        customThumbFiles.set(k, file);
-      };
+      /** Normaliza para comparación laxa: minúsculas, sin acentos raros, solo [a-z0-9] */
+      const fuzzyKey = (s) =>
+        s
+          .normalize('NFC')
+          .toLowerCase()
+          .replace(/\.(mp4|mov|webm|mkv|avi|m4v|mpg|mpeg|gif)$/i, '')
+          .replace(/[^a-z0-9]+/g, '');
+
+      const VIDEO_EXT_RE = /\.(mp4|mov|webm|mkv|avi|m4v|mpg|mpeg)$/i;
 
       for await (const [name, handle] of dirHandle.entries()) {
         const metadata = {
@@ -930,24 +934,26 @@ const FileExplorer = () => {
           try {
             metadata.file = await handle.getFile();
 
-            // .myvideo_<nombredelvideo>.gif  (case-insensitive)
-            const myvideoMatch = name.match(/^\.myvideo_(.+)\.gif$/i);
-            if (myvideoMatch) {
+            // Acepta ".myvideo_NAME.gif" y también "myvideo_NAME.gif" (sin punto inicial)
+            const myvideoMatch = name.match(/^\.?myvideo_(.+)\.gif$/i);
+            if (myvideoMatch && metadata.file) {
               const videoKey = myvideoMatch[1].normalize('NFC');
-              // Nombre completo (p.ej. "clip.mkv")
-              addThumbKey(videoKey, metadata.file);
-              // Sin la última extensión (p.ej. "clip" desde "clip.mkv")
-              const base = videoKey.replace(/\.[^.]+$/, '');
-              if (base && base !== videoKey) addThumbKey(base, metadata.file);
-              // Si el key aún tiene extensión de video (clip.mkv), ya cubierto;
-              // también indexar quitando extensiones de video conocidas de forma explícita
-              const withoutVideoExt = videoKey.replace(
-                /\.(mp4|mov|webm|mkv|avi|m4v|mpg|mpeg)$/i,
-                ''
-              );
-              if (withoutVideoExt && withoutVideoExt !== videoKey) {
-                addThumbKey(withoutVideoExt, metadata.file);
-              }
+              const keys = new Set();
+              const add = (k) => {
+                if (k) keys.add(k.normalize('NFC').toLowerCase());
+              };
+              add(videoKey);
+              add(videoKey.replace(/\.[^.]+$/, ''));
+              add(videoKey.replace(VIDEO_EXT_RE, ''));
+              // Si el key terminaba en .mkv.gif mal parseado, etc.
+              add(videoKey.replace(/\.gif$/i, ''));
+
+              customThumbs.push({
+                file: metadata.file,
+                keys: [...keys],
+                fuzzy: fuzzyKey(videoKey),
+                sourceName: name,
+              });
             }
           } catch {
             // archivo individual ilegible, se ignora
@@ -964,27 +970,50 @@ const FileExplorer = () => {
       const newPreviews = {};
       for (const entry of entries) {
         const ft = getFileType(entry.name);
-        if (ft.type === 'image' && entry.file && !/^\.myvideo_/i.test(entry.name)) {
+        // No listar .myvideo_*.gif / myvideo_*.gif como imagen suelta
+        if (
+          ft.type === 'image' &&
+          entry.file &&
+          !/^\.?myvideo_/i.test(entry.name)
+        ) {
           newPreviews[entry.name] = URL.createObjectURL(entry.file);
         }
       }
 
-      // Resolver miniatura custom para cada video (mp4, mkv, etc.)
       const resolveCustomThumb = (videoName) => {
-        const n = videoName.normalize('NFC');
-        const lower = n.toLowerCase();
+        const lower = videoName.normalize('NFC').toLowerCase();
         const base = lower.replace(/\.[^.]+$/, '');
-        const withoutVideoExt = lower.replace(
-          /\.(mp4|mov|webm|mkv|avi|m4v|mpg|mpeg)$/i,
-          ''
-        );
-        return (
-          customThumbFiles.get(lower) ||
-          customThumbFiles.get(base) ||
-          customThumbFiles.get(withoutVideoExt) ||
-          null
-        );
+        const withoutVideoExt = lower.replace(VIDEO_EXT_RE, '');
+        const fuzzy = fuzzyKey(videoName);
+
+        // 1) Coincidencia exacta por clave
+        for (const thumb of customThumbs) {
+          if (
+            thumb.keys.includes(lower) ||
+            thumb.keys.includes(base) ||
+            thumb.keys.includes(withoutVideoExt)
+          ) {
+            return thumb.file;
+          }
+        }
+        // 2) Coincidencia difusa (ignora espacios, puntos, guiones, etc.)
+        if (fuzzy.length >= 3) {
+          for (const thumb of customThumbs) {
+            if (
+              thumb.fuzzy &&
+              (thumb.fuzzy === fuzzy ||
+                thumb.fuzzy.includes(fuzzy) ||
+                fuzzy.includes(thumb.fuzzy))
+            ) {
+              return thumb.file;
+            }
+          }
+        }
+        return null;
       };
+
+      // Extensiones que el navegador suele no poder decodificar en <video>/canvas
+      const skipAutoThumb = /\.(mkv|avi|m2ts|mts|ts|vob|wmv|flv)$/i;
 
       for (const entry of entries) {
         if (entry.kind !== 'file') continue;
@@ -997,8 +1026,8 @@ const FileExplorer = () => {
           const url = URL.createObjectURL(customFile);
           newPreviews[entry.name] = url;
           entry.thumbnail = url;
-        } else {
-          // Fallback: frame del video (mkv a menudo falla en <video>/canvas)
+        } else if (!skipAutoThumb.test(entry.name)) {
+          // Solo generar frame automático en formatos que el browser puede decodificar
           generateVideoThumbnail(entry.file).then((thumb) => {
             if (thumb) {
               setFiles((prev) =>
@@ -1009,6 +1038,7 @@ const FileExplorer = () => {
             }
           });
         }
+        // mkv/avi sin .myvideo_ → sin miniatura (mejor que un cuadro negro)
       }
 
       setFiles(entries);
