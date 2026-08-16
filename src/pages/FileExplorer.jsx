@@ -434,8 +434,8 @@ const CustomVideoPlayer = ({ src }) => {
     <div
       ref={containerRef}
       tabIndex={0}
-      className="relative w-full bg-black rounded-xl overflow-hidden select-none group/player outline-none"
-      style={{ aspectRatio: '16/9', maxHeight: '65vh' }}
+      className="relative w-full h-full bg-black rounded-xl overflow-hidden select-none group/player outline-none"
+      style={{ aspectRatio: '16/9', maxHeight: 'calc(100vh - 5.5rem)' }}
       onMouseMove={onMouseMove}
       onMouseLeave={() => {
         setHovering(false);
@@ -657,6 +657,10 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') {
+        if (isEditingName) {
+          setIsEditingName(false);
+          return;
+        }
         onClose();
         return;
       }
@@ -664,6 +668,7 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
       // ← → solo para imágenes (no afecta al reproductor de video)
       if (!isImage || !onNavigateImage) return;
       if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
+      if (isEditingName) return;
 
       if (e.key === 'ArrowLeft' && hasPrevImage) {
         e.preventDefault();
@@ -678,7 +683,7 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
     // bubble phase: el video usa capture y solo está montado en modo video
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, isImage, hasPrevImage, hasNextImage, imageIndex, imageSiblings, onNavigateImage]);
+  }, [onClose, isImage, isEditingName, hasPrevImage, hasNextImage, imageIndex, imageSiblings, onNavigateImage]);
 
   const handleRename = async () => {
     const newName = editName.trim();
@@ -734,11 +739,57 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
         aria-modal="true"
         aria-label="Visor de imagen"
       >
-        {/* Barra superior flotante */}
-        <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-b from-black/80 to-transparent">
+        {/* Barra superior flotante con rename */}
+        <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-b from-black/80 via-black/50 to-transparent">
           <div className="min-w-0 flex-1">
-            <p className="text-white font-medium truncate text-sm sm:text-base">{entry.name}</p>
-            <p className="text-white/50 text-xs">
+            {isEditingName ? (
+              <div className="flex items-center gap-2 max-w-xl" onClick={(e) => e.stopPropagation()}>
+                <input
+                  autoFocus
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRename();
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setIsEditingName(false);
+                    }
+                  }}
+                  className="bg-white/10 border border-cyan-400/50 rounded-lg px-3 py-1.5 text-white text-sm font-medium w-full focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+                />
+                <button
+                  onClick={handleRename}
+                  disabled={isSaving}
+                  className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-900 text-xs font-semibold disabled:opacity-50 shrink-0"
+                >
+                  Guardar
+                </button>
+                <button
+                  onClick={() => setIsEditingName(false)}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs shrink-0"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 group min-w-0">
+                <p className="text-white font-medium truncate text-sm sm:text-base">{entry.name}</p>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditingName(true);
+                  }}
+                  title="Editar nombre"
+                  className="opacity-60 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-white/15 text-white/80 hover:text-cyan-300 transition-all shrink-0"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            <p className="text-white/50 text-xs mt-0.5">
               {fileType.name}
               {meta && ` · ${formatFileSize(meta.size)}`}
               {imageSiblings.length > 1 && imageIndex >= 0 && (
@@ -746,6 +797,7 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
                   {imageIndex + 1} / {imageSiblings.length}
                 </span>
               )}
+              {saveMsg && <span className="ml-2 text-green-400">✓ {saveMsg}</span>}
             </p>
           </div>
           <button
@@ -823,15 +875,23 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
     );
   }
 
+  const isVideo = fileType.type === 'video';
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+      className={`fixed inset-0 z-50 flex items-center justify-center ${
+        isVideo ? 'bg-black p-0' : 'bg-black/80 backdrop-blur-sm p-4'
+      }`}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl animate-fade-in"
+        className={`bg-slate-900 flex flex-col overflow-hidden shadow-2xl animate-fade-in ${
+          isVideo
+            ? 'w-full h-full max-w-none max-h-none rounded-none border-0'
+            : 'w-full max-w-5xl max-h-[92vh] rounded-2xl border border-slate-700'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header con nombre editable */}
@@ -913,12 +973,12 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto bg-black/40 flex items-center justify-center min-h-[300px]">
+        <div className={`flex-1 flex items-center justify-center min-h-0 ${isVideo ? 'overflow-hidden bg-black' : 'overflow-auto bg-black/40 min-h-[300px]'}`}>
           {error && <p className="text-red-400 text-sm p-6">{error}</p>}
 
-          {/* Video player estilo Vimeo (controles custom) */}
+          {/* Video player estilo Vimeo (controles custom) — ocupa todo el espacio disponible */}
           {!error && fileType.type === 'video' && mediaUrl && (
-            <div className="w-full max-w-4xl p-4 sm:p-6 flex items-center justify-center">
+            <div className="w-full h-full min-h-0 p-2 sm:p-3 flex items-center justify-center">
               <CustomVideoPlayer src={mediaUrl} />
             </div>
           )}
