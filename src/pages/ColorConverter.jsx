@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CheckIcon } from '../components/icons';
 import { HexColorPicker } from 'react-colorful';
 import { colord, extend } from 'colord';
 import cmykPlugin from 'colord/plugins/cmyk';
@@ -175,8 +176,8 @@ const ColorConverter = () => {
                 </span>
                 Color Converter
                 {lastSaved && (
-                    <span className="text-xs text-green-400 opacity-75 ml-auto">
-                        ✓ Auto-saved {formatDate(lastSaved)}
+                    <span className="text-xs text-green-400 opacity-75 ml-auto inline-flex items-center gap-1.5">
+                        <CheckIcon className="w-4 h-4" aria-label="Guardado" /> Auto-saved {formatDate(lastSaved)}
                     </span>
                 )}
             </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faDownload, faCopy, faCheck, faCode, faPlus, faTimes, faSearchPlus } from '@fortawesome/free-solid-svg-icons';
 import CodeEditor from '../components/CodeEditor';
+import Modal from '../components/Modal';
 
 const QuickNotes = () => {
     // Initial State Structure
@@ -22,6 +23,7 @@ const QuickNotes = () => {
     });
 
     const [copied, setCopied] = useState(false);
+    const [tabToClose, setTabToClose] = useState(null);
 
     // Sync active note data
     const activeNote = notes.find(n => n.id === activeNoteId) || notes[0];
@@ -53,15 +55,21 @@ const QuickNotes = () => {
         if (notes.length === 1) return;
 
         const noteToClose = notes.find(n => n.id === id);
-        if (noteToClose?.content.trim() && !window.confirm(`Close "${noteToClose.title}"? Unsaved changes will be lost.`)) {
+        if (noteToClose?.content.trim()) {
+            // Abrir confirmación accesible (sin window.confirm)
+            setTabToClose(noteToClose);
             return;
         }
+        performClose(id);
+    };
 
+    const performClose = (id) => {
         const newNotes = notes.filter(n => n.id !== id);
         setNotes(newNotes);
         if (activeNoteId === id) {
             setActiveNoteId(newNotes[0].id);
         }
+        setTabToClose(null);
     };
 
     const handleDownload = () => {
@@ -75,9 +83,12 @@ const QuickNotes = () => {
     };
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(activeNote.content);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        navigator.clipboard?.writeText(activeNote.content)
+            .then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            })
+            .catch(() => setCopied(false));
     };
 
     // Line count for footer
@@ -237,6 +248,17 @@ const QuickNotes = () => {
                     <span>Zoom: {fontSize}px</span>
                 </div>
             </div>
+
+            <Modal
+                open={!!tabToClose}
+                title="Cerrar pestaña"
+                message={`La pestaña "${tabToClose?.title || ''}" tiene cambios sin guardar. \u00bfDeseas cerrarla?`}
+                confirmLabel="Cerrar"
+                cancelLabel="Cancelar"
+                danger
+                onConfirm={() => tabToClose && performClose(tabToClose.id)}
+                onCancel={() => setTabToClose(null)}
+            />
         </div>
     );
 };

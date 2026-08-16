@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { colord } from 'colord';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCloudUploadAlt, faEyeDropper, faTimes } from '@fortawesome/free-solid-svg-icons';
+import { CheckIcon } from '../components/icons';
 
 const ImagePicker = () => {
     // Load saved state from localStorage
@@ -147,8 +148,8 @@ const ImagePicker = () => {
                 </span>
                 Image Color Picker
                 {image && (
-                    <span className="text-xs text-green-400 opacity-75 ml-auto">
-                        ✓ Auto-saved
+                    <span className="text-xs text-green-400 opacity-75 ml-auto inline-flex items-center gap-1.5">
+                        <CheckIcon className="w-4 h-4" aria-label="Guardado" /> Auto-saved
                     </span>
                 )}
             </div>

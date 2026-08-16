@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import getFileIcon from '../components/FileIcon';
 import { generateVideoThumbnail } from '../components/videoThumbnail';
 import CodeEditor from '../components/CodeEditor';
+import { CheckIcon, FolderIcon, BulbIcon, WarningIcon } from '../components/icons';
 /* ================================================================
    PERSISTENCIA — IndexedDB (handles) + localStorage (preferencias)
    ================================================================ */
@@ -68,7 +69,7 @@ const clearSession = async () => {
    Clasificación de archivos
    ================================================================ */
 
-// ✅ Archivos basura de macOS (subconjunto de ocultos)
+// Archivos basura de macOS (subconjunto de ocultos)
 const isJunkFile = (name) => name.startsWith('._') || name === '.DS_Store';
 
 // Archivos ocultos: empiezan con "." o son miniaturas myvideo_*.gif
@@ -177,7 +178,7 @@ const findDepthForPath = (stack, segments) => {
 };
 
 /* ================================================================
-   ✅ NUEVO — Interruptor estilizado (toggle switch)
+   NUEVO - Interruptor estilizado (toggle switch)
    ================================================================ */
 const ToggleSwitch = ({ checked, onChange, label }) => (
   <button
@@ -587,6 +588,7 @@ const CustomVideoPlayer = ({ src }) => {
 const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, imageSiblings = [], onNavigateImage }) => {
   const [mediaUrl, setMediaUrl] = useState(null);
   const [textContent, setTextContent] = useState(null);
+  const [fileTooLarge, setFileTooLarge] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
@@ -609,6 +611,7 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
     // Reset estado al cambiar de archivo (navegación en galería)
     setMediaUrl(null);
     setTextContent(null);
+    setFileTooLarge(false);
     setEditContent('');
     setMeta(null);
     setError(null);
@@ -632,11 +635,13 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
           setMediaUrl(url);
         } else if (isEditable) {
           if (file.size > 2 * 1024 * 1024) {
-            setTextContent('⚠️ Archivo demasiado grande para previsualizar (> 2 MB).');
+            setFileTooLarge(true);
+            setTextContent('Archivo demasiado grande para previsualizar (> 2 MB).');
             setEditContent('');
           } else {
             const text = await file.text();
             if (!cancelled) {
+              setFileTooLarge(false);
               setTextContent(text);
               setEditContent(text);
             }
@@ -797,7 +802,7 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
                   {imageIndex + 1} / {imageSiblings.length}
                 </span>
               )}
-              {saveMsg && <span className="ml-2 text-green-400">✓ {saveMsg}</span>}
+              {saveMsg && <span className="ml-2 text-green-400 inline-flex items-center gap-1"><CheckIcon className="w-4 h-4" aria-label="Guardado" />{saveMsg}</span>}
             </p>
           </div>
           <button
@@ -942,11 +947,11 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
               {fileType.name}
               {meta && ` · ${formatFileSize(meta.size)}`}
               {meta?.mime && ` · ${meta.mime}`}
-              {saveMsg && <span className="ml-2 text-green-400">✓ {saveMsg}</span>}
+              {saveMsg && <span className="ml-2 text-green-400 inline-flex items-center gap-1"><CheckIcon className="w-4 h-4" aria-label="Guardado" />{saveMsg}</span>}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {isEditable && textContent !== null && !String(textContent).startsWith('⚠️') && (
+            {isEditable && textContent !== null && !fileTooLarge && (
               <button
                 onClick={handleSaveContent}
                 disabled={isSaving || editContent === textContent}
@@ -1001,8 +1006,13 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
           )}
 
           {!error && isEditable && textContent !== null && (
-            textContent.startsWith('⚠️') ? (
-              <p className="text-amber-400/90 text-sm p-8 text-center">{textContent}</p>
+            fileTooLarge ? (
+              <div className="w-full h-full flex items-center justify-center p-8">
+                <p className="text-amber-400/90 text-sm text-center flex items-center justify-center gap-2">
+                  <WarningIcon className="w-5 h-5 shrink-0" aria-label="Advertencia" />
+                  {textContent}
+                </p>
+              </div>
             ) : (
               <div className="w-full h-full flex flex-col min-h-[420px]" style={{ height: 'min(65vh, 560px)' }}>
                 <CodeEditor
@@ -1091,7 +1101,7 @@ const ConfirmDialog = ({ entry, onCancel, onConfirm }) => {
 };
 
 /* ================================================================
-   Botón ✕ de eliminación
+   Boton X de eliminacion
    ================================================================ */
 const DeleteXButton = ({ onClick, className = '' }) => (
   <button
@@ -1123,7 +1133,7 @@ const FileExplorer = () => {
     return VIEW_MODES.includes(saved) ? saved : 'grid';
   });
 
-  // ✅ NUEVO: toggle de archivos ocultos con persistencia
+  // NUEVO: toggle de archivos ocultos con persistencia
   const [showHiddenFiles, setShowHiddenFiles] = useState(() => {
     return localStorage.getItem(HIDDEN_TOGGLE_KEY) === 'true';
   });
@@ -1144,7 +1154,7 @@ const FileExplorer = () => {
   const currentDir = depth > 0 ? dirStack[depth - 1] : null;
 
   /* ---------------------------------------------------------------
-     ✅ Filtrar por ocultos + búsqueda
+     Filtrar por ocultos + busqueda
      --------------------------------------------------------------- */
   const baseFiltered = showHiddenFiles
     ? files
@@ -1354,7 +1364,7 @@ const FileExplorer = () => {
   }, [dirStack, depth]);
 
   /* ---------------------------------------------------------------
-     Sincronizar URL → stack (botones ⬅️➡️ del navegador)
+     Sincronizar URL hacia stack (botones del navegador)
      --------------------------------------------------------------- */
   useEffect(() => {
     if (!depth || isLoading || pendingSession) return;
@@ -1717,7 +1727,7 @@ const FileExplorer = () => {
   };
 
   /* ================================================================
-     ✅ NUEVO: Clases base para archivos ocultos (estilo gris)
+     NUEVO: Clases base para archivos ocultos (estilo gris)
      ================================================================ */
 const hiddenClasses = (file, removing) => {
   const hidden = isHiddenFile(file.name);
@@ -2012,7 +2022,9 @@ const renderItemCard = (file) => {
       {pendingSession && !currentDir && (
         <div className="mx-6 mt-4 bg-indigo-900/30 border border-indigo-500/50 rounded-lg p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <p className="text-indigo-200 text-sm font-medium">📂 Sesión anterior encontrada</p>
+            <p className="text-indigo-200 text-sm font-medium inline-flex items-center gap-2">
+              <FolderIcon className="w-5 h-5" aria-label="Carpeta" /> Sesión anterior encontrada
+            </p>
             <p className="text-indigo-400/70 text-xs mt-1 font-mono">
               Ruta: /{pendingSession.stack.slice(0, pendingSession.depth).map((d) => cleanName(d.name)).join('/')}
             </p>
@@ -2197,8 +2209,8 @@ const renderItemCard = (file) => {
             </div>
 
             {showHiddenFiles && files.some((f) => isJunkFile(f.name)) && (
-              <p className="text-slate-600 text-xs">
-                💡 Click en archivos <span className="font-mono text-red-400/70">._*</span> para eliminarlos directamente
+              <p className="text-slate-600 text-xs inline-flex items-center gap-1.5">
+                <BulbIcon className="w-4 h-4" aria-label="Consejo" /> Click en archivos <span className="font-mono text-red-400/70">._*</span> para eliminarlos directamente
               </p>
             )}
           </div>
@@ -2243,7 +2255,7 @@ const renderItemCard = (file) => {
         </div>
       )}
 
-      {/* ✅ NUEVO: Directorio con archivos pero todos ocultos */}
+      {/* NUEVO: Directorio con archivos pero todos ocultos */}
       {!isLoading && currentDir && files.length > 0 && filteredFiles.length === 0 && (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">

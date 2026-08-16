@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CheckIcon } from '../components/icons';
 import { RgbaStringColorPicker } from 'react-colorful';
 import { colord, extend } from 'colord';
 import harmoniesPlugin from 'colord/plugins/harmonies';
@@ -130,8 +131,8 @@ const Palettes = () => {
                     <div className="card sticky top-24">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="card-title">Base Color</h3>
-                            <span className="text-xs text-green-400 opacity-75">
-                                ✓ Auto-saved
+                            <span className="text-xs text-green-400 opacity-75 inline-flex items-center gap-1.5">
+                                <CheckIcon className="w-4 h-4" aria-label="Guardado" /> Auto-saved
                             </span>
                         </div>
                         <div className="flex flex-col items-center">
