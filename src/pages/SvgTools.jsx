@@ -4,6 +4,8 @@ import Prism from 'prismjs';
 import 'prismjs/components/prism-markup'; // HTML/SVG
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCloudUploadAlt, faCode, faImage, faCopy, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { CheckIcon } from '../components/icons';
+import Toast from '../components/Toast';
 
 const SvgTools = () => {
     // Load saved state from localStorage
@@ -36,7 +38,11 @@ const SvgTools = () => {
     const [history, setHistory] = useState(savedState.history);
     const [copied, setCopied] = useState(false);
     const [lastSaved, setLastSaved] = useState(savedState.lastModified);
+    const [toast, setToast] = useState(null);
     const fileInputRef = useRef(null);
+
+    const showToast = (type, title, message, duration) =>
+        setToast({ type, title, message, duration });
 
     // Save state to localStorage whenever it changes
     useEffect(() => {
@@ -87,14 +93,20 @@ const SvgTools = () => {
             };
             reader.readAsText(file);
         } else {
-            alert('Please upload a valid SVG file.');
+            showToast('error', 'Archivo no válido', 'Selecciona un archivo SVG.');
         }
     };
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(svgCode);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        navigator.clipboard?.writeText(svgCode)
+            .then(() => {
+                setCopied(true);
+                showToast('success', 'Copiado', 'Código SVG copiado al portapapeles.');
+                setTimeout(() => setCopied(false), 2000);
+            })
+            .catch(() => {
+                showToast('error', 'Error al copiar', 'No se pudo acceder al portapapeles.');
+            });
     };
 
     const loadFromHistory = (historyItem) => {
@@ -130,8 +142,8 @@ const SvgTools = () => {
                 SVG Tools
                 <div className="ml-auto flex items-center gap-4">
                     {lastSaved && (
-                        <span className="text-xs text-green-400 opacity-75">
-                            ✓ Auto-saved {formatDate(lastSaved)}
+                        <span className="text-xs text-green-400 opacity-75 inline-flex items-center gap-1.5">
+                            <CheckIcon className="w-4 h-4" aria-label="Guardado" /> Auto-saved {formatDate(lastSaved)}
                         </span>
                     )}
                 </div>
@@ -255,6 +267,7 @@ const SvgTools = () => {
                     </div>
                 </div>
             </div>
+            <Toast toast={toast} onClose={() => setToast(null)} />
         </div>
     );
 };

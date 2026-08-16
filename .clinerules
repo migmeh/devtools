@@ -1,0 +1,172 @@
+REglas para desarrollo front-end y backend fullstack
+
+1. Prohibición Estricta: Queda terminantemente prohibido el uso de caracteres Unicode de emojis en cualquier archivo de frontend (HTML, JSX, TSX, Vue, etc.) o en contenidos dinámicos.
+
+2. Sustitución Sistemática: Cualquier concepto que normalmente se representaría con un emoji debe ser sustituido por un componente de icono vectorial (SVG) o una ilustración personalizada.
+
+3. Prioridad SVG: El Agente debe priorizar la creación de código SVG "inline" o componentes de iconos (usando librerías como Lucide, Heroicons o Phosphor) en lugar de cualquier recurso rasterizado o basado en fuentes de texto.
+
+4. Optimización: Todos los vectores generados deben incluir atributos de accesibilidad (aria-label, role="img") y ser optimizados para evitar redundancia de nodos en el DOM.
+
+5. el uso de emojis solo sera en el backend logs o en el chat para hacer mas amigable la platica con el usuario
+
+6. Consistencia de Trazo: Al generar dibujos vectoriales, mantén una coherencia en el stroke-width, viewBox y fill-rule. No mezcles estilos de iconos rellenos con lineales en la misma vista.
+
+7. Escalabilidad: Asegúrate de que los vectores utilicen unidades relativas o estén contenidos en contenedores que respeten el aspecto ratio, garantizando una experiencia de usuario fluida en cualquier resolución.  
+
+8. Detección: El Agente debe revisar el código existente y señalar cualquier "leak" de emojis, proponiendo inmediatamente el código SVG correspondiente para reemplazarlo.
+
+9. Responsive Design & Media Queries
+
+Mobile-First Approach: El CSS debe escribirse empezando por los estilos móviles. Las media queries solo se usarán para añadir complejidad a medida que la pantalla crezca (ej. min-width).
+
+  
+Logical Breakpoints: Se deben usar rangos lógicos: 320px (mobile), 768px (tablets), 1024px (desktop).
+
+Viewport Units: Priorizar el uso de vh, vw, vmin, vmax y la función clamp() para tipografía y espaciados dinámicos que se adapten sin saltos bruscos.
+
+
+10. Native Touch & Gestures
+
+Touch Targets: Todos los elementos interactivos (botones, enlaces) deben tener un tamaño mínimo de 44x44px para cumplir con las pautas de accesibilidad y evitar errores de pulsación.
+
+Event Handling: Priorizar eventos de puntero (pointerdown, pointermove) sobre eventos de ratón (mousedown). Si la interacción lo requiere, implementar soporte nativo para gestos como swipe o pinch-to-zoom usando librerías ligeras o la API de Touch.
+
+Feedback Visual: Es obligatorio definir estados :active que den feedback táctil inmediato, eliminando el retraso de 300ms del click mediante la propiedad touch-action: manipulation;.
+
+11. Performance & Native Hardware
+
+GPU Acceleration: Usar transform y opacity para animaciones en lugar de top/left o width/height, forzando el uso de la GPU con will-change en elementos críticos para mantener los 60fps.
+
+Inputs Optimizados: Cada formulario debe usar el inputmode correcto (numeric, tel, email) para desplegar el teclado nativo adecuado en iOS y Android.
+
+Image Optimization: Implementar obligatoriamente srcset y el elemento <picture> con formatos de última generación (WebP/AVIF) para no desperdiciar datos móviles.
+
+12. CSS Mobile Standards
+
+Scroll Behavior: Usar scroll-snap-type para carruseles y overscroll-behavior: contain para evitar que el scroll de un modal mueva el fondo de la página.
+
+Safe Areas: El diseño debe respetar las "Safe Areas" de los dispositivos con notch o barras de gestos, utilizando variables de CSS como env(safe-area-inset-bottom).
+
+Fluid Typography: Usar clamp(1rem, 5vw, 1.5rem) para que el texto se encoja orgánicamente en pantallas pequeñas sin necesidad de mil media queries.
+
+13. Ultra-Small Device Compatibility
+Minimum Target: El CSS base debe ser funcional y estético desde los 320px de ancho (iPhone SE/Mini).
+
+  
+14. Progressive Image Loading
+
+Fallback Obligatorio: Siempre que se use WebP o AVIF, el Agente debe envolverlo en una etiqueta <picture> con un fallback en JPG/PNG para asegurar compatibilidad con navegadores legacy (Safari < 14). 
+
+15. Asynchronous Mastery & Non-Blocking UI
+
+Promise Safety: Todo proceso asíncrono debe estar envuelto en bloques try/catch (en async/await) o tener un .catch() explícito. No se permiten promesas "flotantes" que puedan causar un Uncaught Rejection.
+
+Anti-Freeze Pattern: Operaciones pesadas en el frontend que superen los 200ms deben delegarse a un Web Worker o segmentarse mediante requestIdleCallback para no bloquear el hilo principal (Main Thread).
+
+
+Timeouts & AbortController: Toda petición a API (Fetch/Axios) debe incluir un signal de AbortController con un timeout razonable para evitar peticiones "zombies" que mantengan recursos colgados.
+
+16. Omnipresent Logging (Observability)
+
+Frontend Logging: Implementar un logger centralizado que diferencie entre console.info, console.warn y console.error. En producción, los errores críticos deben capturarse con metadatos del cliente (User-Agent, Viewport).
+
+17. High-End UI Feedback (No Alerts)
+
+Banishment of window.alert: Queda estrictamente prohibido el uso de alert(), confirm() y prompt(). Son intrusivos y bloquean el renderizado.
+  
+Custom Modals & Toasts: Para mensajes críticos, usar Modales Accesibles (con aria-modal y manejo de foco). Para notificaciones de estado (éxito/error leve), usar Toasts no persistentes que no interrumpan el flujo del usuario.
+
+Loading States: Es obligatorio mostrar un estado de carga (Skeleton o Spinner vectorial) mientras una promesa esté pendiente (pending), evitando que la interfaz parezca muerta.
+
+18. Anti-Circular Reference Policy
+
+Flat Data Structures: El Agente debe priorizar la normalización de datos. En lugar de objetos anidados que puedan referenciarse entre sí (ej. autor.post y post.autor), se deben usar IDs de referencia para mantener el árbol de datos limpio y unidireccional.
+
+Serialization Validation: Antes de pasar cualquier objeto a un generador de RSS, JSON.stringify(), o estados globales (como Redux/Context), es obligatorio validar que no existan referencias circulares.
+
+Depth Control: En funciones recursivas de recorrido de nodos (especialmente para generar feeds XML/RSS), se debe implementar un límite de profundidad (Depth Limit) y un set de nodos visitados (WeakSet) para abortar el proceso si se detecta un ciclo.
+
+19. RSS & XML Strict Generation
+
+Sanitización de Nodos: Al construir canales RSS, los datos deben ser transformados a tipos primitivos o estructuras planas. Queda prohibido pasar objetos complejos del modelo de base de datos directamente al constructor del XML.
+
+Fail-Safe Processing: Si un objeto contiene una referencia circular detectada, el Agente debe implementar una función de "limpieza" que reemplace la referencia cíclica con un valor nulo o un string indicativo [Circular], evitando que el proceso truene.
+
+
+20. State Management Hygiene
+
+Immutability First: Para evitar efectos secundarios donde un objeto se modifique a sí mismo por referencia, se deben usar patrones de inmutabilidad (Spread operator o librerías tipo Immer), asegurando que cada cambio genere una nueva instancia sin vínculos ocultos al objeto padre.
+
+
+21. SSR Serialization Safety (Anti-Circular)
+
+Pre-Serialization Check: Antes de enviar datos desde getServerSideProps o funciones de servidor al cliente, el Agente debe asegurar que los objetos sean Plain Old JavaScript Objects (POJO).
+  
+Prohibición de Instancias: No se permite pasar instancias de clases complejas (ej. modelos de Sequelize/Prisma) directamente al frontend. Se debe usar un .toJSON() o un mapeo manual para evitar que métodos o referencias ocultas rompan la hidratación.
+
+The "JSON-Safe" Rule: Todo dato destinado al renderizado en servidor debe ser capaz de pasar por JSON.parse(JSON.stringify(data)) sin perder información crítica ni lanzar excepciones de circularidad.
+
+22. Hydration Mismatch Prevention
+
+Deterministic Rendering: El Agente debe evitar el uso de datos aleatorios (Math.random()) o fechas volátiles (new Date()) directamente en el renderizado inicial sin sincronizarlos, para evitar que el HTML del servidor sea distinto al del cliente.
+
+Visual Consistency: Si se usa detección de dispositivos para el iPhone SE en el servidor, debe haber una estrategia de "fallback" para que el primer renderizado no cause un salto visual (layout shift) al hidratarse en el navegador.
+
+23. Memory Leak Prevention (Server Context)
+
+Stateless Logic: Queda prohibido almacenar estados específicos del usuario en variables globales del servidor. Cada petición debe ser aislada para evitar que datos de un usuario se filtren a otro (Cross-Request State Pollution).
+
+  
+27. Logging & Error Tracking
+
+Structured Logging: Usar librerías como structlog o el logging nativo configurado para imprimir en formato JSON en producción, facilitando la lectura en sistemas como ELK o CloudWatch.
+
+Sensitive Data: Prohibido loguear contraseñas, tokens o información sensible del usuario.
+
+28. Project Structure & Workspace
+
+Strict Hierarchy: El proyecto debe dividirse en tres directorios raíz: /frontend, /backend, y /uploads.
+  
+
+Uploads Isolation: La carpeta /uploads debe vivir fuera del código fuente del backend para facilitar volúmenes en Docker y evitar que se incluya en builds de producción.  
+
+Mac Hygiene: Cada vez que el Agente sugiera comandos de terminal, debe incluir find . -type f -name "._*" -delete para limpiar archivos temporales de macOS. Estos patrones deben estar obligatoriamente en .gitignore y .dockerignore.
+
+32. API Documentation (Swagger/OpenAPI)
+
+Auto-Generated Docs: El backend en Python debe implementar Swagger/OpenAPI de forma obligatoria (usando los esquemas nativos de FastAPI o drf-spectacular en Django).
+
+Mobile-Ready Contracts: Todos los endpoints deben estar debidamente documentados con sus tipos de datos, códigos de respuesta (200, 201, 400, 404, 500) y ejemplos de JSON. Esto garantiza que el desarrollo de apps móviles sea independiente y fluido.
+
+33. Test-Driven Reliability (TDD Mindset)
+
+Mandatory Unit Tests: Por cada nueva funcionalidad o cambio en la lógica, el Agente debe generar sus respectivas pruebas unitarias.
+
+Backend: Usar pytest para lógica de negocio y endpoints.
+
+Frontend: Usar Vitest o Jest con React Testing Library (o similar) para componentes críticos.
+
+Regression Safety: Ninguna funcionalidad se considera terminada hasta que las pruebas confirmen que no se ha roto el comportamiento existente.
+
+33. Clean Deployment & Documentation
+
+34. Hot-Reload & HMR (Hot Module Replacement)
+
+Vite Polling: En el docker-compose.yml, el servicio de frontend debe configurar la variable WATCHPACK_POLLING=true o configurar vite.config.ts con server: { watch: { usePolling: true } }. Esto garantiza que los cambios en tu Mac se reflejen instantáneamente dentro del contenedor.
+
+35. PWA Strategy & Offline Support
+Vite PWA Plugin: Se debe utilizar vite-plugin-pwa para gestionar el manifiesto y el Service Worker de forma profesional.
+
+Service Worker Update Policy: Configurar el SW para "Prompt for Update" o "Immediate Update". El usuario debe recibir un aviso (usando un modal, ¡nada de alerts!) cuando haya una nueva versión disponible para que la app se recargue.
+
+Asset Caching: Implementar estrategias de CacheFirst para fuentes y vectores (SVGs), y NetworkFirst para datos de la API de Postgres.
+
+37. Manifest & Icons
+
+Icons: En lugar de emojis, el manifiesto de la PWA debe apuntar a iconos vectoriales exportados en tamaños estándar (192x192, 512x512) con fondo transparente y opaco según las guías de iOS y Android.
+
+39. UTF-8 Universal Encoding
+
+Frontend Meta: Todos los archivos HTML deben incluir obligatoriamente <meta charset="UTF-8">.
+  

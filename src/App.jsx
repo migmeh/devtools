@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
-// Placeholder imports for pages
+// Placeholder imports for pages aqui
 import Home from './pages/Home';
 import ColorConverter from './pages/ColorConverter';
 import ImagePicker from './pages/ImagePicker';

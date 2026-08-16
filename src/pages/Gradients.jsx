@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { RgbaStringColorPicker } from 'react-colorful';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash, faCopy, faSwatchbook, faUndo } from '@fortawesome/free-solid-svg-icons';
+import { CheckIcon } from '../components/icons';
 
 import { colord } from 'colord';
 
@@ -136,8 +137,8 @@ const GradientGenerator = () => {
                     <div className="card">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="card-title">Settings</h3>
-                            <span className="text-xs text-green-400 opacity-75">
-                                ✓ Auto-saved
+                            <span className="text-xs text-green-400 opacity-75 inline-flex items-center gap-1.5">
+                                <CheckIcon className="w-4 h-4" aria-label="Guardado" /> Auto-saved
                             </span>
                         </div>
 
