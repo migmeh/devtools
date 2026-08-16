@@ -71,10 +71,10 @@ const clearSession = async () => {
 // ✅ Archivos basura de macOS (subconjunto de ocultos)
 const isJunkFile = (name) => name.startsWith('._') || name === '.DS_Store';
 
-// ✅ NUEVO — Archivos ocultos: cualquier nombre que empiece con "."
+// Archivos ocultos: empiezan con "." o son miniaturas myvideo_*.gif
 const isHiddenFile = (name) => {
   const clean = name.replace(/\/+$/, '');
-  return clean.startsWith('.');
+  return clean.startsWith('.') || /^\.?myvideo_.+\.gif$/i.test(clean);
 };
 
 const getFileType = (name) => {
@@ -221,6 +221,7 @@ const formatTime = (sec) => {
 const CustomVideoPlayer = ({ src }) => {
   const videoRef = useRef(null);
   const progressRef = useRef(null);
+  const containerRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -230,6 +231,7 @@ const CustomVideoPlayer = ({ src }) => {
   const [hovering, setHovering] = useState(false);
   const [seeking, setSeeking] = useState(false);
   const hideTimer = useRef(null);
+  const SEEK_STEP = 5; // segundos por flecha ← →
 
   const showControls = hovering || !playing || seeking;
 
@@ -260,6 +262,9 @@ const CustomVideoPlayer = ({ src }) => {
     // Autoplay
     v.play().catch(() => {});
 
+    // Enfocar el contenedor para recibir teclas
+    containerRef.current?.focus({ preventScroll: true });
+
     return () => {
       v.removeEventListener('timeupdate', onTime);
       v.removeEventListener('loadedmetadata', onMeta);
@@ -269,6 +274,98 @@ const CustomVideoPlayer = ({ src }) => {
       v.removeEventListener('ended', onEnded);
     };
   }, [src, seeking]);
+
+  // Atajos de teclado: ← → espacio ↑ ↓ f m
+  useEffect(() => {
+    const onKey = (e) => {
+      // No interferir si el usuario escribe en un input
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
+
+      const v = videoRef.current;
+      if (!v) return;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+        case 'j':
+        case 'J': {
+          e.preventDefault();
+          e.stopPropagation();
+          const next = Math.max(0, v.currentTime - SEEK_STEP);
+          v.currentTime = next;
+          setCurrent(next);
+          setHovering(true);
+          clearTimeout(hideTimer.current);
+          hideTimer.current = setTimeout(() => setHovering(false), 2500);
+          break;
+        }
+        case 'ArrowRight':
+        case 'l':
+        case 'L': {
+          e.preventDefault();
+          e.stopPropagation();
+          const dur = Number.isFinite(v.duration) ? v.duration : Infinity;
+          const next = Math.min(dur, v.currentTime + SEEK_STEP);
+          v.currentTime = next;
+          setCurrent(next);
+          setHovering(true);
+          clearTimeout(hideTimer.current);
+          hideTimer.current = setTimeout(() => setHovering(false), 2500);
+          break;
+        }
+        case ' ':
+        case 'k':
+        case 'K': {
+          e.preventDefault();
+          e.stopPropagation();
+          if (v.paused) v.play().catch(() => {});
+          else v.pause();
+          break;
+        }
+        case 'ArrowUp': {
+          e.preventDefault();
+          const val = Math.min(1, (v.volume || 0) + 0.05);
+          v.volume = val;
+          v.muted = false;
+          setVolume(val);
+          setMuted(false);
+          break;
+        }
+        case 'ArrowDown': {
+          e.preventDefault();
+          const val = Math.max(0, (v.volume || 0) - 0.05);
+          v.volume = val;
+          setVolume(val);
+          if (val === 0) {
+            v.muted = true;
+            setMuted(true);
+          }
+          break;
+        }
+        case 'm':
+        case 'M': {
+          e.preventDefault();
+          v.muted = !v.muted;
+          setMuted(v.muted);
+          break;
+        }
+        case 'f':
+        case 'F': {
+          e.preventDefault();
+          const wrap = containerRef.current;
+          if (!wrap) break;
+          if (document.fullscreenElement) document.exitFullscreen();
+          else wrap.requestFullscreen?.();
+          break;
+        }
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
 
   const togglePlay = () => {
     const v = videoRef.current;
@@ -318,7 +415,7 @@ const CustomVideoPlayer = ({ src }) => {
   };
 
   const toggleFullscreen = () => {
-    const wrap = videoRef.current?.parentElement;
+    const wrap = containerRef.current;
     if (!wrap) return;
     if (document.fullscreenElement) document.exitFullscreen();
     else wrap.requestFullscreen?.();
@@ -335,7 +432,9 @@ const CustomVideoPlayer = ({ src }) => {
 
   return (
     <div
-      className="relative w-full bg-black rounded-xl overflow-hidden select-none group/player"
+      ref={containerRef}
+      tabIndex={0}
+      className="relative w-full bg-black rounded-xl overflow-hidden select-none group/player outline-none"
       style={{ aspectRatio: '16/9', maxHeight: '65vh' }}
       onMouseMove={onMouseMove}
       onMouseLeave={() => {
@@ -359,12 +458,12 @@ const CustomVideoPlayer = ({ src }) => {
         }`}
       />
 
-      {/* Botón play grande al centro (cuando pausado) */}
+      {/* Botón play grande al centro (cuando pausado) — cyan como la barra */}
       {!playing && (
         <button
           type="button"
           onClick={togglePlay}
-          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-white/95 hover:bg-white text-slate-900 shadow-2xl flex items-center justify-center transition-transform hover:scale-105 z-10"
+          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-cyan-400 hover:bg-cyan-300 text-slate-900 shadow-[0_0_30px_rgba(34,211,238,0.45)] flex items-center justify-center transition-all hover:scale-105 z-10"
           aria-label="Reproducir"
         >
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 ml-0.5">
@@ -485,7 +584,7 @@ const CustomVideoPlayer = ({ src }) => {
 /* ================================================================
    VISOR DE ARCHIVOS (con edición de nombre y contenido)
    ================================================================ */
-const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle }) => {
+const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, imageSiblings = [], onNavigateImage }) => {
   const [mediaUrl, setMediaUrl] = useState(null);
   const [textContent, setTextContent] = useState(null);
   const [editContent, setEditContent] = useState('');
@@ -497,6 +596,26 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle })
   const [saveMsg, setSaveMsg] = useState(null);
   const fileType = getFileType(entry.name);
   const isEditable = ['text', 'code'].includes(fileType.type);
+  const isImage = fileType.type === 'image';
+
+  // Índice en la galería de imágenes (solo aplica a imágenes)
+  const imageIndex = isImage
+    ? imageSiblings.findIndex((f) => f.name === entry.name)
+    : -1;
+  const hasPrevImage = isImage && imageIndex > 0;
+  const hasNextImage = isImage && imageIndex >= 0 && imageIndex < imageSiblings.length - 1;
+
+  useEffect(() => {
+    // Reset estado al cambiar de archivo (navegación en galería)
+    setMediaUrl(null);
+    setTextContent(null);
+    setEditContent('');
+    setMeta(null);
+    setError(null);
+    setIsEditingName(false);
+    setEditName(cleanName(entry.name));
+    setSaveMsg(null);
+  }, [entry]);
 
   useEffect(() => {
     let url = null;
@@ -537,11 +656,29 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle })
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      // ← → solo para imágenes (no afecta al reproductor de video)
+      if (!isImage || !onNavigateImage) return;
+      if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
+
+      if (e.key === 'ArrowLeft' && hasPrevImage) {
+        e.preventDefault();
+        e.stopPropagation();
+        onNavigateImage(imageSiblings[imageIndex - 1]);
+      } else if (e.key === 'ArrowRight' && hasNextImage) {
+        e.preventDefault();
+        e.stopPropagation();
+        onNavigateImage(imageSiblings[imageIndex + 1]);
+      }
     };
+    // bubble phase: el video usa capture y solo está montado en modo video
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, isImage, hasPrevImage, hasNextImage, imageIndex, imageSiblings, onNavigateImage]);
 
   const handleRename = async () => {
     const newName = editName.trim();
@@ -587,6 +724,104 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle })
       setIsSaving(false);
     }
   };
+
+  // Modal a pantalla completa solo para imágenes
+  if (isImage) {
+    return (
+      <div
+        className="fixed inset-0 z-50 bg-black flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Visor de imagen"
+      >
+        {/* Barra superior flotante */}
+        <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-b from-black/80 to-transparent">
+          <div className="min-w-0 flex-1">
+            <p className="text-white font-medium truncate text-sm sm:text-base">{entry.name}</p>
+            <p className="text-white/50 text-xs">
+              {fileType.name}
+              {meta && ` · ${formatFileSize(meta.size)}`}
+              {imageSiblings.length > 1 && imageIndex >= 0 && (
+                <span className="ml-2 text-white/40">
+                  {imageIndex + 1} / {imageSiblings.length}
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors shrink-0"
+            aria-label="Cerrar"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-5 h-5">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Imagen a pantalla completa */}
+        <div
+          className="flex-1 flex items-center justify-center relative min-h-0"
+          onClick={onClose}
+        >
+          {error && <p className="text-red-400 text-sm p-6">{error}</p>}
+          {!error && mediaUrl && (
+            <img
+              src={mediaUrl}
+              alt={entry.name}
+              className="max-w-full max-h-full w-auto h-auto object-contain select-none"
+              onClick={(e) => e.stopPropagation()}
+              draggable={false}
+            />
+          )}
+
+          {/* Flecha anterior */}
+          {hasPrevImage && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigateImage?.(imageSiblings[imageIndex - 1]);
+              }}
+              className="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 border border-white/15 text-white flex items-center justify-center transition-colors backdrop-blur-sm"
+              aria-label="Imagen anterior"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="w-5 h-5">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+          )}
+
+          {/* Flecha siguiente */}
+          {hasNextImage && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigateImage?.(imageSiblings[imageIndex + 1]);
+              }}
+              className="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 border border-white/15 text-white flex items-center justify-center transition-colors backdrop-blur-sm"
+              aria-label="Imagen siguiente"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="w-5 h-5">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Hint teclado */}
+        {imageSiblings.length > 1 && (
+          <div className="absolute bottom-4 inset-x-0 flex justify-center pointer-events-none">
+            <span className="text-white/40 text-xs bg-black/40 px-3 py-1 rounded-full backdrop-blur-sm">
+              ← → para navegar · Esc para cerrar
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -680,10 +915,6 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle })
 
         <div className="flex-1 overflow-auto bg-black/40 flex items-center justify-center min-h-[300px]">
           {error && <p className="text-red-400 text-sm p-6">{error}</p>}
-
-          {!error && fileType.type === 'image' && mediaUrl && (
-            <img src={mediaUrl} alt={entry.name} className="max-w-full max-h-[70vh] object-contain" />
-          )}
 
           {/* Video player estilo Vimeo (controles custom) */}
           {!error && fileType.type === 'video' && mediaUrl && (
@@ -2007,6 +2238,10 @@ const renderItemCard = (file) => {
           entry={viewerEntry}
           onClose={() => setViewerEntry(null)}
           parentHandle={currentDir?.handle}
+          imageSiblings={files.filter(
+            (f) => f.kind === 'file' && getFileType(f.name).type === 'image' && !/^\.?myvideo_/i.test(f.name)
+          )}
+          onNavigateImage={(next) => setViewerEntry(next)}
           onRenamed={(oldEntry, newName) => {
             setFiles((prev) =>
               prev.map((f) =>
