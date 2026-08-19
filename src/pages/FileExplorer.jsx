@@ -1145,9 +1145,12 @@ const FileExplorer = () => {
 
   /* ---------------------------------------------------------------
      Scroll: guardar/restaurar posición por ruta al navegar carpetas
+     - onScroll guarda continuamente (así back del navegador no pierde la pos)
+     - restore con reintentos hasta que el contenido tenga altura
      --------------------------------------------------------------- */
   const scrollContainerRef = useRef(null);
   const scrollPositionsRef = useRef({}); // pathKey → scrollTop
+  const restoreTimerRef = useRef(null);
 
   const getPathKey = useCallback(() => {
     return stackToPath(dirStack.slice(0, depth));
@@ -1156,29 +1159,66 @@ const FileExplorer = () => {
   const saveScrollPosition = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    const key = getPathKey();
+    const key = stackToPath(dirStack.slice(0, depth));
     scrollPositionsRef.current[key] = el.scrollTop;
-  }, [getPathKey]);
+  }, [dirStack, depth]);
 
-  const restoreScrollPosition = useCallback(() => {
+  /** Guarda en cada scroll del usuario (fuente de verdad por ruta).
+   *  No guardar mientras isLoading: el spinner deja scrollTop en 0 y
+   *  sobrescribiría la posición guardada de la ruta a la que volvemos.
+   */
+  const handleScroll = useCallback(() => {
+    if (isLoading) return;
     const el = scrollContainerRef.current;
     if (!el) return;
-    const key = getPathKey();
-    const top = scrollPositionsRef.current[key] ?? 0;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop = top;
-        }
-      });
-    });
-  }, [getPathKey]);
+    const key = stackToPath(dirStack.slice(0, depth));
+    scrollPositionsRef.current[key] = el.scrollTop;
+  }, [dirStack, depth, isLoading]);
 
+  const restoreScrollPosition = useCallback(() => {
+    const key = stackToPath(dirStack.slice(0, depth));
+    const top = scrollPositionsRef.current[key] ?? 0;
+    if (restoreTimerRef.current) {
+      cancelAnimationFrame(restoreTimerRef.current);
+      restoreTimerRef.current = null;
+    }
+    let attempts = 0;
+    const maxAttempts = 40;
+    const tryRestore = () => {
+      attempts += 1;
+      const el = scrollContainerRef.current;
+      if (el) {
+        if (top <= 0) {
+          el.scrollTop = 0;
+          return;
+        }
+        el.scrollTop = top;
+        // Si el contenido aún no tiene altura suficiente, reintentar
+        if (Math.abs(el.scrollTop - top) > 1 && attempts < maxAttempts) {
+          restoreTimerRef.current = requestAnimationFrame(tryRestore);
+          return;
+        }
+        return;
+      }
+      if (attempts < maxAttempts) {
+        restoreTimerRef.current = requestAnimationFrame(tryRestore);
+      }
+    };
+    restoreTimerRef.current = requestAnimationFrame(tryRestore);
+  }, [dirStack, depth]);
+
+  // Restaurar cuando termina la carga o cambia la profundidad
   useEffect(() => {
     if (!isLoading && currentDir) {
       restoreScrollPosition();
     }
-  }, [isLoading, depth, currentDir, restoreScrollPosition]);
+    return () => {
+      if (restoreTimerRef.current) {
+        cancelAnimationFrame(restoreTimerRef.current);
+        restoreTimerRef.current = null;
+      }
+    };
+  }, [isLoading, depth, files.length, currentDir, restoreScrollPosition]);
 
 
   /* ---------------------------------------------------------------
@@ -2137,8 +2177,8 @@ const renderItemCard = (file) => {
         </div>
       )}
 
-      {/* Loading */}
-      {isLoading && (
+      {/* Loading sin currentDir (p.ej. primera carga) */}
+      {isLoading && !currentDir && (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mb-3" aria-label="Cargando" />
@@ -2147,8 +2187,8 @@ const renderItemCard = (file) => {
         </div>
       )}
 
-      {/* Contenido + toolbar */}
-      {!isLoading && currentDir && (
+      {/* Contenido + toolbar (se mantiene montado al navegar para no perder el ref de scroll) */}
+      {currentDir && (
         <>
           <div className="px-6 pt-4 flex flex-col gap-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -2248,11 +2288,19 @@ const renderItemCard = (file) => {
 
           <div
             ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto p-6"
+            className="flex-1 overflow-y-auto p-6 relative"
+            onScroll={handleScroll}
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
             onDrop={handleDropOnCurrent}
           >
-            {files.length === 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-24">
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mb-3" aria-label="Cargando" />
+                  <p className="text-slate-400">Cargando archivos...</p>
+                </div>
+              </div>
+            ) : files.length === 0 ? (
               <div className="text-center py-16 text-slate-500">
                 <p className="mb-2">Directorio vacío</p>
                 <p className="text-sm text-slate-600">Arrastra archivos aquí o usa el botón Crear</p>
