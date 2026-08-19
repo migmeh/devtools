@@ -27,4 +27,4 @@ dist-ssr
 *.sln
 *.sw?
 
-sync_config.jsonc._*
+sync_config.jsonc
