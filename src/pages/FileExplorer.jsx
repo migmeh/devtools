@@ -69,6 +69,7 @@ const clearSession = async () => {
    ================================================================ */
 
 // ✅ Archivos basura de macOS (subconjunto de ocultos)
+// ✅ Archivos basura de macOS (subconjunto de ocultos)
 const isJunkFile = (name) => name.startsWith('._') || name === '.DS_Store';
 
 // Archivos ocultos: empiezan con "." o son miniaturas myvideo_*.gif
@@ -177,6 +178,7 @@ const findDepthForPath = (stack, segments) => {
 };
 
 /* ================================================================
+   ✅ NUEVO — Interruptor estilizado (toggle switch)
    ✅ NUEVO — Interruptor estilizado (toggle switch)
    ================================================================ */
 const ToggleSwitch = ({ checked, onChange, label }) => (
@@ -633,6 +635,7 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
         } else if (isEditable) {
           if (file.size > 2 * 1024 * 1024) {
             setTextContent('⚠️ Archivo demasiado grande para previsualizar (> 2 MB).');
+            setTextContent('⚠️ Archivo demasiado grande para previsualizar (> 2 MB).');
             setEditContent('');
           } else {
             const text = await file.text();
@@ -798,6 +801,7 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
                 </span>
               )}
               {saveMsg && <span className="ml-2 text-green-400">✓ {saveMsg}</span>}
+              {saveMsg && <span className="ml-2 text-green-400">✓ {saveMsg}</span>}
             </p>
           </div>
           <button
@@ -943,9 +947,11 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
               {meta && ` · ${formatFileSize(meta.size)}`}
               {meta?.mime && ` · ${meta.mime}`}
               {saveMsg && <span className="ml-2 text-green-400">✓ {saveMsg}</span>}
+              {saveMsg && <span className="ml-2 text-green-400">✓ {saveMsg}</span>}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {isEditable && textContent !== null && !String(textContent).startsWith('⚠️') && (
             {isEditable && textContent !== null && !String(textContent).startsWith('⚠️') && (
               <button
                 onClick={handleSaveContent}
@@ -1001,6 +1007,8 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
           )}
 
           {!error && isEditable && textContent !== null && (
+            textContent.startsWith('⚠️') ? (
+              <p className="text-amber-400/90 text-sm p-8 text-center">{textContent}</p>
             textContent.startsWith('⚠️') ? (
               <p className="text-amber-400/90 text-sm p-8 text-center">{textContent}</p>
             ) : (
@@ -1092,6 +1100,7 @@ const ConfirmDialog = ({ entry, onCancel, onConfirm }) => {
 
 /* ================================================================
    Botón ✕ de eliminación
+   Botón ✕ de eliminación
    ================================================================ */
 const DeleteXButton = ({ onClick, className = '' }) => (
   <button
@@ -1123,6 +1132,7 @@ const FileExplorer = () => {
     return VIEW_MODES.includes(saved) ? saved : 'grid';
   });
 
+  // ✅ NUEVO: toggle de archivos ocultos con persistencia
   // ✅ NUEVO: toggle de archivos ocultos con persistencia
   const [showHiddenFiles, setShowHiddenFiles] = useState(() => {
     return localStorage.getItem(HIDDEN_TOGGLE_KEY) === 'true';
@@ -1355,6 +1365,7 @@ const FileExplorer = () => {
 
   /* ---------------------------------------------------------------
      Sincronizar URL → stack (botones ⬅️➡️ del navegador)
+     Sincronizar URL → stack (botones ⬅️➡️ del navegador)
      --------------------------------------------------------------- */
   useEffect(() => {
     if (!depth || isLoading || pendingSession) return;
@@ -1366,6 +1377,7 @@ const FileExplorer = () => {
     const target = findDepthForPath(dirStack, segments);
     if (!target || target === depth) return;
 
+    saveScrollPosition();
     setDepth(target);
     loadDirectory(dirStack[target - 1].handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1483,6 +1495,7 @@ const FileExplorer = () => {
     try {
       const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
       const initialStack = [{ name: handle.name || 'Raíz', handle }];
+      scrollPositionsRef.current = {};
       setDirStack(initialStack);
       setDepth(1);
       setPendingSession(null);
@@ -1499,6 +1512,7 @@ const FileExplorer = () => {
      Navegación
      --------------------------------------------------------------- */
   const navigateToDirectory = async (metadata) => {
+    saveScrollPosition();
     const newStack = [...dirStack.slice(0, depth), { name: metadata.name, handle: metadata.handle }];
     setDirStack(newStack);
     setDepth(newStack.length);
@@ -1511,6 +1525,7 @@ const FileExplorer = () => {
       resetExplorer();
       return;
     }
+    saveScrollPosition();
     const newDepth = depth - 1;
     setDepth(newDepth);
     setSearchParams(pathParams(dirStack.slice(0, newDepth)));
@@ -1518,6 +1533,7 @@ const FileExplorer = () => {
   };
 
   const resetExplorer = async () => {
+    scrollPositionsRef.current = {};
     setDirStack([]);
     setDepth(0);
     setFiles([]);
@@ -1717,6 +1733,7 @@ const FileExplorer = () => {
   };
 
   /* ================================================================
+     ✅ NUEVO: Clases base para archivos ocultos (estilo gris)
      ✅ NUEVO: Clases base para archivos ocultos (estilo gris)
      ================================================================ */
 const hiddenClasses = (file, removing) => {
@@ -2013,6 +2030,7 @@ const renderItemCard = (file) => {
         <div className="mx-6 mt-4 bg-indigo-900/30 border border-indigo-500/50 rounded-lg p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <p className="text-indigo-200 text-sm font-medium">📂 Sesión anterior encontrada</p>
+            <p className="text-indigo-200 text-sm font-medium">📂 Sesión anterior encontrada</p>
             <p className="text-indigo-400/70 text-xs mt-1 font-mono">
               Ruta: /{pendingSession.stack.slice(0, pendingSession.depth).map((d) => cleanName(d.name)).join('/')}
             </p>
@@ -2199,11 +2217,14 @@ const renderItemCard = (file) => {
             {showHiddenFiles && files.some((f) => isJunkFile(f.name)) && (
               <p className="text-slate-600 text-xs">
                 💡 Click en archivos <span className="font-mono text-red-400/70">._*</span> para eliminarlos directamente
+              <p className="text-slate-600 text-xs">
+                💡 Click en archivos <span className="font-mono text-red-400/70">._*</span> para eliminarlos directamente
               </p>
             )}
           </div>
 
           <div
+            ref={scrollContainerRef}
             className="flex-1 overflow-y-auto p-6"
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
             onDrop={handleDropOnCurrent}
@@ -2243,6 +2264,7 @@ const renderItemCard = (file) => {
         </div>
       )}
 
+      {/* ✅ NUEVO: Directorio con archivos pero todos ocultos */}
       {/* ✅ NUEVO: Directorio con archivos pero todos ocultos */}
       {!isLoading && currentDir && files.length > 0 && filteredFiles.length === 0 && (
         <div className="flex-1 flex items-center justify-center">
