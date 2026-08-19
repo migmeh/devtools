@@ -1144,70 +1144,99 @@ const FileExplorer = () => {
   const currentDir = depth > 0 ? dirStack[depth - 1] : null;
 
   /* ---------------------------------------------------------------
-     Scroll: guardar/restaurar posición por ruta al navegar carpetas
-     - onScroll guarda continuamente (así back del navegador no pierde la pos)
-     - restore con reintentos hasta que el contenido tenga altura
+     Scroll por ruta + hash en la URL (#s=123)
+     El hash vive en la entrada de history: al pulsar atrás el navegador
+     restaura ?path=...#s=450 y nosotros aplicamos ese scroll.
      --------------------------------------------------------------- */
   const scrollContainerRef = useRef(null);
-  const scrollPositionsRef = useRef({}); // pathKey → scrollTop
+  const scrollPositionsRef = useRef({}); // pathKey → scrollTop (fallback en memoria)
   const restoreTimerRef = useRef(null);
+  const hashWriteTimerRef = useRef(null);
+  const ignoreHashWriteRef = useRef(false); // no reescribir hash mientras restauramos
 
   const getPathKey = useCallback(() => {
     return stackToPath(dirStack.slice(0, depth));
   }, [dirStack, depth]);
 
+  const readScrollFromHash = useCallback(() => {
+    const m = window.location.hash.match(/^#s=(\d+)$/);
+    return m ? Number(m[1]) : null;
+  }, []);
+
+  /** Escribe #s=N en la entrada actual de history (replace, sin nueva entrada) */
+  const writeScrollToHash = useCallback((top) => {
+    const y = Math.max(0, Math.round(Number(top) || 0));
+    const nextHash = y > 0 ? `#s=${y}` : '';
+    const currentHash = window.location.hash || '';
+    if (currentHash === nextHash) return;
+    if (y === 0 && currentHash === '') return;
+    const url = `${window.location.pathname}${window.location.search}${nextHash}`;
+    window.history.replaceState(window.history.state, '', url);
+  }, []);
+
   const saveScrollPosition = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     const key = stackToPath(dirStack.slice(0, depth));
-    scrollPositionsRef.current[key] = el.scrollTop;
-  }, [dirStack, depth]);
+    const top = el.scrollTop;
+    scrollPositionsRef.current[key] = top;
+    writeScrollToHash(top);
+  }, [dirStack, depth, writeScrollToHash]);
 
-  /** Guarda en cada scroll del usuario (fuente de verdad por ruta).
-   *  No guardar mientras isLoading: el spinner deja scrollTop en 0 y
-   *  sobrescribiría la posición guardada de la ruta a la que volvemos.
-   */
+  /** Scroll del usuario → memoria + hash (debounce) */
   const handleScroll = useCallback(() => {
-    if (isLoading) return;
+    if (isLoading || ignoreHashWriteRef.current) return;
     const el = scrollContainerRef.current;
     if (!el) return;
     const key = stackToPath(dirStack.slice(0, depth));
-    scrollPositionsRef.current[key] = el.scrollTop;
-  }, [dirStack, depth, isLoading]);
+    const top = el.scrollTop;
+    scrollPositionsRef.current[key] = top;
+    if (hashWriteTimerRef.current) clearTimeout(hashWriteTimerRef.current);
+    hashWriteTimerRef.current = setTimeout(() => {
+      writeScrollToHash(top);
+    }, 80);
+  }, [dirStack, depth, isLoading, writeScrollToHash]);
 
   const restoreScrollPosition = useCallback(() => {
     const key = stackToPath(dirStack.slice(0, depth));
-    const top = scrollPositionsRef.current[key] ?? 0;
+    // Prioridad: hash de la URL (lo que trae el botón atrás) → memoria
+    const fromHash = readScrollFromHash();
+    const top = fromHash != null ? fromHash : (scrollPositionsRef.current[key] ?? 0);
+    if (fromHash != null) {
+      scrollPositionsRef.current[key] = fromHash;
+    }
+
     if (restoreTimerRef.current) {
       cancelAnimationFrame(restoreTimerRef.current);
       restoreTimerRef.current = null;
     }
+
+    ignoreHashWriteRef.current = true;
     let attempts = 0;
-    const maxAttempts = 40;
+    const maxAttempts = 50;
     const tryRestore = () => {
       attempts += 1;
       const el = scrollContainerRef.current;
       if (el) {
-        if (top <= 0) {
-          el.scrollTop = 0;
-          return;
-        }
         el.scrollTop = top;
-        // Si el contenido aún no tiene altura suficiente, reintentar
-        if (Math.abs(el.scrollTop - top) > 1 && attempts < maxAttempts) {
+        if (top > 0 && Math.abs(el.scrollTop - top) > 1 && attempts < maxAttempts) {
           restoreTimerRef.current = requestAnimationFrame(tryRestore);
           return;
         }
+        // Ya aplicado: permitir de nuevo escribir hash
+        ignoreHashWriteRef.current = false;
         return;
       }
       if (attempts < maxAttempts) {
         restoreTimerRef.current = requestAnimationFrame(tryRestore);
+      } else {
+        ignoreHashWriteRef.current = false;
       }
     };
     restoreTimerRef.current = requestAnimationFrame(tryRestore);
-  }, [dirStack, depth]);
+  }, [dirStack, depth, readScrollFromHash]);
 
-  // Restaurar cuando termina la carga o cambia la profundidad
+  // Restaurar al terminar de cargar / cambiar de carpeta
   useEffect(() => {
     if (!isLoading && currentDir) {
       restoreScrollPosition();
@@ -1427,7 +1456,13 @@ const FileExplorer = () => {
     const path = stackToPath(dirStack.slice(0, depth));
     const current = searchParams.get('path') || '';
     if (path === current) return;
+    const prevHash = window.location.hash || '';
     setSearchParams(pathParams(dirStack.slice(0, depth)), { replace: true });
+    // React Router a veces limpia el hash; lo restauramos si había #s=
+    if (prevHash.startsWith('#s=') && window.location.hash !== prevHash) {
+      const url = `${window.location.pathname}${window.location.search}${prevHash}`;
+      window.history.replaceState(window.history.state, '', url);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirStack, depth]);
 
@@ -1444,7 +1479,13 @@ const FileExplorer = () => {
     const target = findDepthForPath(dirStack, segments);
     if (!target || target === depth) return;
 
-    saveScrollPosition();
+    // Solo memoria: NO tocar el hash. El #s=N de la URL ya viene
+    // de la entrada de history a la que volvemos (botón atrás).
+    const el = scrollContainerRef.current;
+    if (el) {
+      const key = stackToPath(dirStack.slice(0, depth));
+      scrollPositionsRef.current[key] = el.scrollTop;
+    }
     setDepth(target);
     loadDirectory(dirStack[target - 1].handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1579,11 +1620,18 @@ const FileExplorer = () => {
      Navegación
      --------------------------------------------------------------- */
   const navigateToDirectory = async (metadata) => {
+    // Guarda scroll de la carpeta actual en su entrada de history (#s=N)
     saveScrollPosition();
     const newStack = [...dirStack.slice(0, depth), { name: metadata.name, handle: metadata.handle }];
     setDirStack(newStack);
     setDepth(newStack.length);
+    // Nueva entrada de history sin hash → empieza arriba
     setSearchParams(pathParams(newStack));
+    // Asegurar que la nueva URL no herede #s= de la anterior
+    if (window.location.hash) {
+      const url = `${window.location.pathname}${window.location.search}`;
+      window.history.replaceState(window.history.state, '', url);
+    }
     await loadDirectory(metadata.handle);
   };
 
@@ -1596,6 +1644,10 @@ const FileExplorer = () => {
     const newDepth = depth - 1;
     setDepth(newDepth);
     setSearchParams(pathParams(dirStack.slice(0, newDepth)));
+    if (window.location.hash) {
+      const url = `${window.location.pathname}${window.location.search}`;
+      window.history.replaceState(window.history.state, '', url);
+    }
     await loadDirectory(dirStack[newDepth - 1].handle);
   };
 
