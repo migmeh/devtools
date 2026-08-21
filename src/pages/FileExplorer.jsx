@@ -601,6 +601,11 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
   const isEditable = ['text', 'code'].includes(fileType.type);
   const isImage = fileType.type === 'image';
 
+  // Rotación / espejo (visor de imagen)
+  const [rotation, setRotation] = useState(0); // 0, 90, 180, 270
+  const [flipH, setFlipH] = useState(false);
+  const [flipV, setFlipV] = useState(false);
+
   // Índice en la galería de imágenes (solo aplica a imágenes)
   const imageIndex = isImage
     ? imageSiblings.findIndex((f) => f.name === entry.name)
@@ -618,6 +623,9 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
     setIsEditingName(false);
     setEditName(cleanName(entry.name));
     setSaveMsg(null);
+    setRotation(0);
+    setFlipH(false);
+    setFlipV(false);
   }, [entry]);
 
   useEffect(() => {
@@ -687,6 +695,71 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, isImage, isEditingName, hasPrevImage, hasNextImage, imageIndex, imageSiblings, onNavigateImage]);
+
+  const hasImageTransform = rotation !== 0 || flipH || flipV;
+
+  const handleSaveTransformedImage = async () => {
+    if (!isImage || !entry.handle || !mediaUrl || !hasImageTransform) return;
+    setIsSaving(true);
+    setSaveMsg(null);
+    setError(null);
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('No se pudo cargar la imagen'));
+        img.src = mediaUrl;
+      });
+
+      const rad = (rotation * Math.PI) / 180;
+      const swap = rotation % 180 !== 0;
+      const cw = swap ? img.naturalHeight : img.naturalWidth;
+      const ch = swap ? img.naturalWidth : img.naturalHeight;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas no disponible');
+
+      ctx.translate(cw / 2, ch / 2);
+      ctx.rotate(rad);
+      ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+
+      const mime = meta?.mime && meta.mime.startsWith('image/') ? meta.mime : 'image/jpeg';
+      const quality = mime === 'image/jpeg' || mime === 'image/webp' ? 0.92 : undefined;
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error('No se pudo exportar la imagen'))),
+          mime,
+          quality
+        );
+      });
+
+      const writable = await entry.handle.createWritable();
+      await writable.write(await blob.arrayBuffer());
+      await writable.close();
+
+      // Actualizar preview local
+      if (mediaUrl) URL.revokeObjectURL(mediaUrl);
+      const newUrl = URL.createObjectURL(blob);
+      setMediaUrl(newUrl);
+      setRotation(0);
+      setFlipH(false);
+      setFlipV(false);
+      setMeta((m) => (m ? { ...m, size: blob.size } : m));
+      setSaveMsg('Imagen guardada');
+      if (onContentSaved) onContentSaved(entry);
+      setTimeout(() => setSaveMsg(null), 2500);
+    } catch (e) {
+      setError(`No se pudo guardar la imagen: ${e.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleRename = async () => {
     const newName = editName.trim();
@@ -815,6 +888,87 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
           </button>
         </div>
 
+        {/* Toolbar rotación / espejo */}
+        <div
+          className="absolute bottom-16 sm:bottom-20 inset-x-0 z-20 flex justify-center pointer-events-none"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="pointer-events-auto flex items-center gap-1.5 px-2 py-1.5 rounded-2xl bg-black/70 border border-white/10 backdrop-blur-md shadow-xl">
+            <button
+              type="button"
+              title="Rotar 90° izquierda"
+              onClick={() => setRotation((r) => (r + 270) % 360)}
+              className="w-9 h-9 rounded-xl hover:bg-white/15 text-white flex items-center justify-center transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4.5 h-4.5">
+                <path d="M3 12a9 9 0 1 0 9-9" />
+                <polyline points="3 7 3 12 8 12" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              title="Rotar 90° derecha"
+              onClick={() => setRotation((r) => (r + 90) % 360)}
+              className="w-9 h-9 rounded-xl hover:bg-white/15 text-white flex items-center justify-center transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4.5 h-4.5">
+                <path d="M21 12a9 9 0 1 1-9-9" />
+                <polyline points="21 7 21 12 16 12" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              title="Espejo horizontal"
+              onClick={() => setFlipH((v) => !v)}
+              className={`w-9 h-9 rounded-xl hover:bg-white/15 text-white flex items-center justify-center transition-colors ${flipH ? 'bg-cyan-500/30 text-cyan-300' : ''}`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4.5 h-4.5">
+                <path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3" />
+                <path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3" />
+                <line x1="12" y1="2" x2="12" y2="22" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              title="Espejo vertical"
+              onClick={() => setFlipV((v) => !v)}
+              className={`w-9 h-9 rounded-xl hover:bg-white/15 text-white flex items-center justify-center transition-colors ${flipV ? 'bg-cyan-500/30 text-cyan-300' : ''}`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4.5 h-4.5">
+                <path d="M3 8V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3" />
+                <path d="M3 16v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+              </svg>
+            </button>
+            {hasImageTransform && (
+              <>
+                <span className="w-px h-6 bg-white/20 mx-0.5" />
+                <button
+                  type="button"
+                  title="Restablecer"
+                  onClick={() => {
+                    setRotation(0);
+                    setFlipH(false);
+                    setFlipV(false);
+                  }}
+                  className="px-2.5 h-9 rounded-xl hover:bg-white/15 text-white/80 text-xs font-medium transition-colors"
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  title="Guardar imagen editada"
+                  disabled={isSaving}
+                  onClick={handleSaveTransformedImage}
+                  className="px-3 h-9 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 text-xs font-semibold transition-colors"
+                >
+                  {isSaving ? 'Guardando…' : 'Guardar'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
         {/* Imagen a pantalla completa */}
         <div
           className="flex-1 flex items-center justify-center relative min-h-0"
@@ -825,7 +979,10 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
             <img
               src={mediaUrl}
               alt={entry.name}
-              className="max-w-full max-h-full w-auto h-auto object-contain select-none"
+              className="max-w-full max-h-full w-auto h-auto object-contain select-none transition-transform duration-200"
+              style={{
+                transform: `rotate(${rotation}deg) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})`,
+              }}
               onClick={(e) => e.stopPropagation()}
               draggable={false}
             />
@@ -870,7 +1027,7 @@ const FileViewer = ({ entry, onClose, onRenamed, onContentSaved, parentHandle, i
         {imageSiblings.length > 1 && (
           <div className="absolute bottom-4 inset-x-0 flex justify-center pointer-events-none">
             <span className="text-white/40 text-xs bg-black/40 px-3 py-1 rounded-full backdrop-blur-sm">
-              ← → para navegar · Esc para cerrar
+              ← → navegar · rotar / espejo abajo · Esc cerrar
             </span>
           </div>
         )}
@@ -1163,7 +1320,12 @@ const FileExplorer = () => {
   }, [dirStack, depth]);
 
   const readScrollFromUrl = useCallback(() => {
-    const raw = searchParams.get('s');
+    // Preferir window.location (replaceState) y fallback a searchParams de RR
+    let raw = null;
+    try {
+      raw = new URL(window.location.href).searchParams.get('s');
+    } catch (_) {}
+    if (raw == null || raw === '') raw = searchParams.get('s');
     if (raw == null || raw === '') return null;
     const n = Number(raw);
     return Number.isFinite(n) && n >= 0 ? n : null;
@@ -1174,14 +1336,21 @@ const FileExplorer = () => {
     const y = Math.max(0, Math.round(Number(top) || 0));
     if (lastWrittenScrollRef.current === y) return;
     lastWrittenScrollRef.current = y;
-    const next = new URLSearchParams(searchParams);
-    if (y > 0) next.set('s', String(y));
-    else next.delete('s');
-    // Evitar trabajo si no cambia
-    const cur = searchParams.get('s');
-    if ((y > 0 ? String(y) : null) === cur) return;
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+    // history.replaceState actualiza la barra de URL de inmediato
+    // (setSearchParams a veces no se refleja o se pisa con el sync de path)
+    try {
+      const url = new URL(window.location.href);
+      if (y > 0) url.searchParams.set('s', String(y));
+      else url.searchParams.delete('s');
+      const next = url.pathname + url.search + url.hash;
+      const cur = window.location.pathname + window.location.search + window.location.hash;
+      if (next !== cur) {
+        window.history.replaceState(window.history.state, '', next);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
 
   const saveScrollPosition = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -1202,8 +1371,17 @@ const FileExplorer = () => {
     if (scrollWriteTimerRef.current) clearTimeout(scrollWriteTimerRef.current);
     scrollWriteTimerRef.current = setTimeout(() => {
       writeScrollToUrl(top);
-    }, 100);
+    }, 80);
   }, [dirStack, depth, isLoading, writeScrollToUrl]);
+
+  // Listener nativo por si React onScroll no dispara (overflow en ancestro, etc.)
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return undefined;
+    const onScrollNative = () => handleScroll();
+    el.addEventListener('scroll', onScrollNative, { passive: true });
+    return () => el.removeEventListener('scroll', onScrollNative);
+  }, [handleScroll, currentDir, isLoading]);
 
   const restoreScrollPosition = useCallback(() => {
     const key = stackToPath(dirStack.slice(0, depth));
@@ -2331,7 +2509,7 @@ const renderItemCard = (file) => {
 
           <div
             ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto p-6 relative"
+            className="flex-1 min-h-0 overflow-y-auto p-6 relative"
             onScroll={handleScroll}
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
             onDrop={handleDropOnCurrent}
@@ -2449,7 +2627,7 @@ const renderItemCard = (file) => {
             if (currentDir) loadDirectory(currentDir.handle);
           }}
           onContentSaved={() => {
-            // opcional: refrescar tamaño etc.
+            if (currentDir) loadDirectory(currentDir.handle);
           }}
         />
       )}
